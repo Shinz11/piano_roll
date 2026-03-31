@@ -139,11 +139,10 @@ body {
       <input type="text" id="input-uid" placeholder="例: user_001" autocomplete="off">
     </div>
     <div>
-      <label class="t-lbl">タスク種別</label>
+      <label class="t-lbl">実験種類</label>
       <select id="input-task">
-        <option value="melody">メロディ作成</option>
-        <option value="scale">音階探索</option>
-        <option value="free">自由課題</option>
+        <option value="scale">1.音階制作</option>
+        <option value="melody">2.メロディ制作</option>
       </select>
     </div>
     <button class="modal-ok" id="btn-login-ok">開始</button>
@@ -181,15 +180,15 @@ body {
   <button class="t-btn" id="btn-stop" disabled>■ 停止</button>
   <div class="vsep"></div>
   <span class="t-lbl">BPM</span>
-  <input type="number" id="bpm-in" value="120" min="40" max="240">
+  <span id="bpm-in" style="color:#e0e0e0;font-size:15px;font-weight:bold;padding:0 4px;">90</span>
   <div class="vsep"></div>
   <span class="t-lbl">音符長</span>
   <select id="len-sel">
     <option value="4">全音符</option>
     <option value="2">2分音符</option>
-    <option value="1">4分音符</option>
+    <option value="1" selected>4分音符</option>
     <option value="0.5">8分音符</option>
-    <option value="0.25" selected>16分音符</option>
+    <option value="0.25">16分音符</option>
   </select>
   <div class="vsep"></div>
   <button id="btn-submit">💾 データ保存</button>
@@ -202,8 +201,8 @@ body {
 // 【Supabase 設定】
 // ★ デプロイ前にここを実際の値に書き換えてください
 // ============================================================
-const SUPABASE_URL = "https://ptyqyvghqrtczeukcwfp.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0eXF5dmdocXJ0Y3pldWtjd2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NTc2ODUsImV4cCI6MjA5MDQzMzY4NX0.8BBnoyhbM_8hBBtz7D6rGlZGdTsamh6qX8egNZgAUrU";
+const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";
 
 // Supabase への INSERT（fetch で直接 REST API を叩く）
 async function supabaseInsert(table, record) {
@@ -235,7 +234,7 @@ const NOTE_H       = 90;
 const BEAT_W       = 160;
 const SUBDIVISIONS = 4;
 const CELL_W       = BEAT_W / SUBDIVISIONS;
-const TOTAL_BEATS  = 32;
+const TOTAL_BEATS  = 16;   // 4小節分（4拍 × 4小節）
 const GRID_W       = BEAT_W * TOTAL_BEATS;
 const KB_W         = 160;
 const RULER_H      = 30;
@@ -375,7 +374,7 @@ let playStartBeat= 0;
 let playedIds    = new Set();
 let rafId        = null;
 
-function getBpm() { return parseInt(document.getElementById('bpm-in').value) || 120; }
+function getBpm() { return 90; }   // テンポ固定
 
 function startPlay() {
   ensureAudio();
@@ -689,8 +688,8 @@ kbCanvas.addEventListener('mousemove', e => {
   const y = e.offsetY;
   if (kbIsTuning && kbTunePitch >= 0) {
     const dy   = kbTuneStartY - y;
-    const nc = Math.max(-MAX_CENTS, Math.min(MAX_CENTS, kbTuneStartCents + dy * CENTS_PER_PX));
-    pitchOffsets[kbTunePitch] = Math.round(nc);  // ← Math.round() で整数に丸める
+    const nc   = Math.max(-MAX_CENTS, Math.min(MAX_CENTS, kbTuneStartCents + dy * CENTS_PER_PX));
+    pitchOffsets[kbTunePitch] = nc;
     recomputeRows();
     drawKeyboard();
     drawGrid();
@@ -907,7 +906,7 @@ document.getElementById('btn-submit').addEventListener('click', async () => {
   btn.textContent = '送信中…';
 
   try {
-    const bpm        = getBpm();
+    const bpm        = 90;   // 固定BPM
     const beatPerSec = bpm / 60;
 
     // ---- 収集データを計算 ----
@@ -1005,8 +1004,7 @@ document.getElementById('btn-done-ok').addEventListener('click', () => {
 // 【サンプルノート（初期表示）】
 // ============================================================
 function addSampleNotes() {
-  for (let i = 0; i < 8; i++)
-    notes.push(newNote(i, i, 0.9, 90));
+  // 初期ノートなし
 }
 
 // ============================================================
