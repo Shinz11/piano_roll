@@ -5,59 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>微分音ピアノロール</title>
 <style>
-/* ============================================================
-   リセット & 全体
-============================================================ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
 body {
-  background: #1a1a2e;
-  color: #e0e0e0;
+  background: #1a1a2e; color: #e0e0e0;
   font-family: 'Courier New', monospace;
-  display: flex;
-  flex-direction: column;
-  user-select: none;
+  display: flex; flex-direction: column; user-select: none;
 }
-
-/* ============================================================
-   ピアノロール本体
-============================================================ */
-#piano-roll-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-/* ルーラー行 */
+#piano-roll-area { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #ruler-row { display: flex; flex-shrink: 0; }
 #ruler-corner { background: #0d1117; border-bottom: 1px solid #333; flex-shrink: 0; }
 #ruler-canvas { display: block; background: #0d1117; border-bottom: 1px solid #333; }
-
-/* メイン行 */
 #main-row { flex: 1; display: flex; min-height: 0; }
 #keyboard-wrap { flex-shrink: 0; overflow: hidden; }
 #keyboard-canvas { display: block; }
 #grid-wrap { flex: 1; overflow-x: auto; overflow-y: hidden; }
 #grid-canvas { display: block; }
-
-/* ============================================================
-   トランスポートバー
-============================================================ */
 #transport {
-  flex-shrink: 0;
-  background: #0d1117;
-  border-top: 1px solid #333355;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  height: 62px;
+  flex-shrink: 0; background: #0d1117; border-top: 1px solid #333355;
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px; height: 62px;
 }
 .t-btn {
-  border: none; border-radius: 6px;
-  font-family: inherit; font-size: 14px; font-weight: bold;
-  cursor: pointer; padding: 6px 18px; height: 40px; min-width: 80px;
+  border: none; border-radius: 6px; font-family: inherit; font-size: 14px;
+  font-weight: bold; cursor: pointer; padding: 6px 18px; height: 40px; min-width: 80px;
 }
 #btn-play  { background:#1e6b3a; color:#fff; border:1px solid #2eb86a; }
 #btn-play:hover  { background:#257a45; }
@@ -67,58 +37,35 @@ body {
 #btn-stop:disabled { background:#3a1a1a; color:#886655; }
 .vsep { width:1px; height:36px; background:#333355; flex-shrink:0; }
 .t-lbl { color:#8b949e; font-size:11px; white-space:nowrap; }
-#bpm-in {
-  width:70px; height:36px;
-  background:#1a1a2e; color:#e0e0e0;
-  border:1px solid #4a4a6a; border-radius:4px;
-  font-family:inherit; font-size:15px; font-weight:bold; text-align:center;
-}
 #len-sel {
-  height:36px; min-width:100px;
-  background:#1a1a2e; color:#e0e0e0;
-  border:1px solid #4a4a6a; border-radius:4px;
-  font-family:inherit; font-size:12px; padding:0 6px;
+  height:36px; min-width:100px; background:#1a1a2e; color:#e0e0e0;
+  border:1px solid #4a4a6a; border-radius:4px; font-family:inherit; font-size:12px; padding:0 6px;
 }
-
-/* 送信ボタン */
 #btn-submit {
-  background:#0f3460; color:#00e5ff;
-  border:1px solid #00e5ff; border-radius:6px;
-  font-family:inherit; font-size:13px; font-weight:bold;
-  cursor:pointer; padding:6px 14px; height:40px;
-  white-space:nowrap;
+  background:#0f3460; color:#00e5ff; border:1px solid #00e5ff; border-radius:6px;
+  font-family:inherit; font-size:13px; font-weight:bold; cursor:pointer;
+  padding:6px 14px; height:40px; white-space:nowrap;
 }
 #btn-submit:hover { background:#1a4a80; }
 #btn-submit:disabled { opacity:0.4; cursor:default; }
-
 #status-msg { color:#444466; font-size:10px; margin-left:auto; max-width:400px; }
-
-/* ============================================================
-   モーダル（ユーザーID入力 / 送信完了）
-============================================================ */
 .modal-overlay {
-  position:fixed; inset:0;
-  background:rgba(0,0,0,0.75);
-  display:flex; align-items:center; justify-content:center;
-  z-index:100;
+  position:fixed; inset:0; background:rgba(0,0,0,0.75);
+  display:flex; align-items:center; justify-content:center; z-index:100;
 }
 .modal-box {
   background:#16213e; border:1px solid #4a4a6a; border-radius:10px;
-  padding:28px 32px; min-width:340px; max-width:480px;
+  padding:28px 32px; min-width:360px; max-width:500px;
   display:flex; flex-direction:column; gap:14px;
 }
 .modal-box h2 { font-size:16px; color:#e0e0e0; }
 .modal-box p  { font-size:13px; color:#8b949e; line-height:1.6; }
 .modal-box input, .modal-box select {
-  background:#1a1a2e; color:#e0e0e0;
-  border:1px solid #4a4a6a; border-radius:4px;
-  font-family:inherit; font-size:14px;
-  padding:8px 10px; width:100%;
+  background:#1a1a2e; color:#e0e0e0; border:1px solid #4a4a6a; border-radius:4px;
+  font-family:inherit; font-size:14px; padding:8px 10px; width:100%;
 }
-.modal-box .row { display:flex; gap:10px; }
 .modal-ok {
-  background:#1e6b3a; color:#fff;
-  border:1px solid #2eb86a; border-radius:6px;
+  background:#1e6b3a; color:#fff; border:1px solid #2eb86a; border-radius:6px;
   font-family:inherit; font-size:14px; font-weight:bold;
   cursor:pointer; padding:8px 20px; align-self:flex-end;
 }
@@ -129,20 +76,45 @@ body {
 </head>
 <body>
 
-<!-- ユーザーID入力モーダル -->
+<!-- ログインモーダル -->
 <div class="modal-overlay" id="modal-login">
   <div class="modal-box">
     <h2>🎹 微分音ピアノロール</h2>
-    <p>データ収集のため、ユーザーIDとタスク種別を入力してください。</p>
+    <p>データ収集のため、以下の情報を入力してください。</p>
+    <!-- ユーザーID -->
     <div>
       <label class="t-lbl">ユーザーID</label>
-      <input type="text" id="input-uid" placeholder="例: user_001" autocomplete="off">
+      <input type="text" id="input-uid" placeholder="例: オオタニ" autocomplete="off">
     </div>
+    <!-- 音楽経験の有無 -->
+    <div>
+      <label class="t-lbl">音楽経験の有無</label>
+      <div style="display:flex;gap:24px;margin-top:6px;">
+        <label style="display:flex;align-items:center;gap:8px;color:#e0e0e0;font-size:14px;cursor:pointer;">
+          <input type="radio" name="music-exp" id="exp-no" value="none" checked
+            style="width:16px;height:16px;accent-color:#00e5ff;"> なし
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;color:#e0e0e0;font-size:14px;cursor:pointer;">
+          <input type="radio" name="music-exp" id="exp-yes" value="yes"
+            style="width:16px;height:16px;accent-color:#00e5ff;"> あり
+        </label>
+      </div>
+    </div>
+    <!-- 経験詳細（「あり」のときだけ表示） -->
+    <div id="exp-detail-wrap" style="display:none;">
+      <label class="t-lbl">経験の内容と期間（自由記述）</label>
+      <textarea id="input-exp-detail"
+        placeholder="例: ピアノを10年、ギターを3年など"
+        style="background:#1a1a2e;color:#e0e0e0;border:1px solid #4a4a6a;border-radius:4px;
+               font-family:inherit;font-size:14px;padding:8px 10px;width:100%;
+               min-height:70px;resize:vertical;line-height:1.5;margin-top:4px;"></textarea>
+    </div>
+    <!-- 実験種類 -->
     <div>
       <label class="t-lbl">実験種類</label>
       <select id="input-task">
-        <option value="scale">1.音階制作</option>
-        <option value="melody">2.メロディ制作</option>
+        <option value="scale">1. 音階制作</option>
+        <option value="melody">2. メロディ制作</option>
       </select>
     </div>
     <button class="modal-ok" id="btn-login-ok">開始</button>
@@ -165,12 +137,8 @@ body {
     <canvas id="ruler-canvas"></canvas>
   </div>
   <div id="main-row">
-    <div id="keyboard-wrap">
-      <canvas id="keyboard-canvas"></canvas>
-    </div>
-    <div id="grid-wrap">
-      <canvas id="grid-canvas"></canvas>
-    </div>
+    <div id="keyboard-wrap"><canvas id="keyboard-canvas"></canvas></div>
+    <div id="grid-wrap"><canvas id="grid-canvas"></canvas></div>
   </div>
 </div>
 
@@ -180,9 +148,9 @@ body {
   <button class="t-btn" id="btn-stop" disabled>■ 停止</button>
   <div class="vsep"></div>
   <span class="t-lbl">BPM</span>
-  <span id="bpm-in" style="color:#e0e0e0;font-size:15px;font-weight:bold;padding:0 4px;">90</span>
+  <span style="color:#e0e0e0;font-size:15px;font-weight:bold;padding:0 4px;">90</span>
   <div class="vsep"></div>
-  <span class="t-lbl">音符長</span>
+  <span class="t-lbl">音符の長さ</span>
   <select id="len-sel">
     <option value="4">全音符</option>
     <option value="2">2分音符</option>
@@ -198,13 +166,11 @@ body {
 <script>
 "use strict";
 // ============================================================
-// 【Supabase 設定】
-// ★ デプロイ前にここを実際の値に書き換えてください
+// Supabase 設定（デプロイ前に書き換え）
 // ============================================================
-const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";
+const SUPABASE_URL     = "https://YOUR_PROJECT.supabase.co";
+const SUPABASE_ANON_KEY= "YOUR_ANON_KEY";
 
-// Supabase への INSERT（fetch で直接 REST API を叩く）
 async function supabaseInsert(table, record) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: "POST",
@@ -221,27 +187,24 @@ async function supabaseInsert(table, record) {
 }
 
 // ============================================================
-// 【定数】
+// 定数
 // ============================================================
 const TOTAL_NOTES  = 8;
 const NOTE_NAMES   = ["C","D","E","F","G","A","B","C"];
-// 各pitch(0〜7)が平均律上で何半音目か
 const DIATONIC_ST  = [0, 2, 4, 5, 7, 9, 11, 12];
-const BASE_HZ      = 130.81;   // pitch=0 → C3
+const BASE_HZ      = 130.81;
 const MAX_CENTS    = 200.0;
 
-const NOTE_H       = 90;
+const NOTE_H       = 90;   // 基準値（動的上書きあり）
 const BEAT_W       = 160;
 const SUBDIVISIONS = 4;
 const CELL_W       = BEAT_W / SUBDIVISIONS;
-const TOTAL_BEATS  = 16;   // 4小節分（4拍 × 4小節）
+const TOTAL_BEATS  = 16;
 const GRID_W       = BEAT_W * TOTAL_BEATS;
 const KB_W         = 160;
 const RULER_H      = 30;
-
-const BORDER_HOT   = 8;    // 境界線ホットゾーン px
-const RESIZE_HOT   = 14;   // ノート右端リサイズ px
-const CENTS_PER_PX = MAX_CENTS / (NOTE_H * 0.5);
+const BORDER_HOT   = 8;
+const RESIZE_HOT   = 14;
 
 const C = {
   bgC:"#0f3460", bgLight:"#16213e",
@@ -251,54 +214,54 @@ const C = {
 };
 
 // ============================================================
-// 【状態】
+// 状態
 // ============================================================
-let notes       = [];          // {id, pitch, start, duration, velocity}
+let notes       = [];
 let noteIdSeq   = 0;
-const newNote = (pitch, start, duration, velocity=100) =>
+const newNote   = (pitch, start, duration, velocity=100) =>
   ({ id: noteIdSeq++, pitch, start, duration, velocity });
 
-let pitchOffsets = new Array(TOTAL_NOTES).fill(0);  // cents
+let pitchOffsets = new Array(TOTAL_NOTES).fill(0);
+let rowHeights   = new Array(TOTAL_NOTES).fill(NOTE_H);
+let rowTops      = new Array(TOTAL_NOTES).fill(0);
 
-// 行の動的高さ（PitchOffsetStore 相当）
-let rowHeights = new Array(TOTAL_NOTES).fill(NOTE_H);
-let rowTops    = new Array(TOTAL_NOTES).fill(0);
+// 実際に使う1行の高さ（resizeCanvases で更新）
+window._nh = NOTE_H;
+
+function getNH() { return window._nh || NOTE_H; }
 
 function recomputeRows() {
-  // 各行の基本高さ
-  const base = pitchOffsets.map(c => Math.max(4, NOTE_H * (1 - Math.abs(c) / MAX_CENTS)));
-  // 縮んだ分を隣行に加算
+  const nh    = getNH();
+  const base  = pitchOffsets.map(c => Math.max(4, nh * (1 - Math.abs(c) / MAX_CENTS)));
   const extra = new Array(TOTAL_NOTES).fill(0);
   for (let p = 0; p < TOTAL_NOTES; p++) {
-    const shrink = NOTE_H - base[p];
+    const shrink   = nh - base[p];
     if (shrink < 0.5) continue;
     const neighbor = pitchOffsets[p] > 0 ? p + 1 : p - 1;
     if (neighbor >= 0 && neighbor < TOTAL_NOTES) extra[neighbor] += shrink;
   }
-  // グリッド行番号 i → pitch = TOTAL_NOTES-1-i （上が高音）
   let acc = 0;
   for (let i = 0; i < TOTAL_NOTES; i++) {
-    const p = TOTAL_NOTES - 1 - i;
+    const p      = TOTAL_NOTES - 1 - i;
     rowHeights[i] = Math.max(4, Math.round(base[p] + extra[p]));
     rowTops[i]    = acc;
-    acc += rowHeights[i];
+    acc          += rowHeights[i];
   }
-  // 合計を NOTE_H * TOTAL_NOTES に補正
-  const total = NOTE_H * TOTAL_NOTES;
+  const total = nh * TOTAL_NOTES;
   const sum   = rowTops[TOTAL_NOTES-1] + rowHeights[TOTAL_NOTES-1];
   const diff  = total - sum;
   if (diff !== 0) {
-    let biggest = 0;
+    let bi = 0;
     for (let i = 1; i < TOTAL_NOTES; i++)
-      if (rowHeights[i] > rowHeights[biggest]) biggest = i;
-    rowHeights[biggest] += diff;
-    // tops を再計算
+      if (rowHeights[i] > rowHeights[bi]) bi = i;
+    rowHeights[bi] += diff;
     acc = 0;
     for (let i = 0; i < TOTAL_NOTES; i++) { rowTops[i] = acc; acc += rowHeights[i]; }
   }
 }
 
-function totalHeight() { return NOTE_H * TOTAL_NOTES; }
+function totalHeight() { return getNH() * TOTAL_NOTES; }
+function getCentsPx()  { return MAX_CENTS / (getNH() * 0.5); }
 
 function yToRow(y) {
   for (let i = 0; i < TOTAL_NOTES; i++)
@@ -306,12 +269,10 @@ function yToRow(y) {
   return -1;
 }
 
-// ピッチ番号 → Hz
 function pitchToHz(pitch, cents=0) {
   return BASE_HZ * Math.pow(2, (DIATONIC_ST[pitch] + cents / 100) / 12);
 }
 
-// セント値 → ノート色
 function centsToFill(cents, alpha=220) {
   const t = Math.min(1, Math.abs(cents) / MAX_CENTS);
   if (Math.abs(cents) < 1) return `rgba(233,69,96,${alpha/255})`;
@@ -319,74 +280,57 @@ function centsToFill(cents, alpha=220) {
   return `rgba(${Math.round(180-t*50)},${Math.round(60+t*20)},${Math.round(200+t*55)},${alpha/255})`;
 }
 
-// ノート矩形（グリッド座標）
 function noteRect(note) {
   const p   = note.pitch;
   const row = TOTAL_NOTES - 1 - p;
   const rh  = rowHeights[row];
   const rt  = rowTops[row];
-  const c   = pitchOffsets[p];
+  const cv  = pitchOffsets[p];
   const h   = Math.max(2, rh - 2);
-  const y   = c >= 0 ? rt + 1 : rt + rh - 1 - h;
-  return {
-    x: note.start * BEAT_W,
-    y,
-    w: Math.max(2, note.duration * BEAT_W - 2),
-    h,
-  };
+  const y   = cv >= 0 ? rt + 1 : rt + rh - 1 - h;
+  return { x: note.start * BEAT_W, y, w: Math.max(2, note.duration * BEAT_W - 2), h };
 }
 
 // ============================================================
-// 【Web Audio（コールバック方式でポリフォニー）】
+// Web Audio
 // ============================================================
 let audioCtx = null;
 function ensureAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
-
 function playTone(hz, durationSec, velocity=100) {
   ensureAudio();
-  const now = audioCtx.currentTime;
-  const vol = (velocity / 127) * 0.28;
-  const gainNode = audioCtx.createGain();
-  gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(vol, now + 0.01);
-  gainNode.gain.setValueAtTime(vol, now + durationSec - 0.06);
-  gainNode.gain.linearRampToValueAtTime(0, now + durationSec);
-  gainNode.connect(audioCtx.destination);
-
-  const osc = audioCtx.createOscillator();
-  osc.type = 'sine';
+  const now  = audioCtx.currentTime;
+  const vol  = (velocity / 127) * 0.28;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(vol, now + 0.01);
+  gain.gain.setValueAtTime(vol, now + durationSec - 0.06);
+  gain.gain.linearRampToValueAtTime(0, now + durationSec);
+  gain.connect(audioCtx.destination);
+  const osc  = audioCtx.createOscillator();
+  osc.type   = 'sine';
   osc.frequency.value = hz;
-  osc.connect(gainNode);
-  osc.start(now);
-  osc.stop(now + durationSec);
+  osc.connect(gain);
+  osc.start(now); osc.stop(now + durationSec);
 }
 
 // ============================================================
-// 【シーケンサー】
+// シーケンサー
 // ============================================================
-let isPlaying    = false;
-let playheadBeat = 0;
-let playStartTime= 0;
-let playStartBeat= 0;
-let playedIds    = new Set();
-let rafId        = null;
-
-function getBpm() { return 90; }   // テンポ固定
+let isPlaying = false, playheadBeat = 0, playStartTime = 0, playStartBeat = 0;
+let playedIds = new Set(), rafId = null;
+function getBpm() { return 90; }
 
 function startPlay() {
   ensureAudio();
-  isPlaying     = true;
-  playStartTime = audioCtx.currentTime;
-  playStartBeat = playheadBeat;
-  playedIds.clear();
+  isPlaying = true; playStartTime = audioCtx.currentTime;
+  playStartBeat = playheadBeat; playedIds.clear();
   document.getElementById('btn-play').disabled = true;
   document.getElementById('btn-stop').disabled = false;
   rafId = requestAnimationFrame(seqTick);
 }
-
 function stopPlay() {
   isPlaying = false;
   if (rafId) cancelAnimationFrame(rafId);
@@ -395,28 +339,18 @@ function stopPlay() {
   document.getElementById('btn-stop').disabled = true;
   drawAll();
 }
-
 function seqTick() {
-  const bpm         = getBpm();
-  const beatPerSec  = bpm / 60;
-  const elapsed     = audioCtx.currentTime - playStartTime;
-  playheadBeat      = playStartBeat + elapsed * beatPerSec;
-
+  const bpm = getBpm(), bps = bpm / 60;
+  playheadBeat = playStartBeat + (audioCtx.currentTime - playStartTime) * bps;
   if (playheadBeat >= TOTAL_BEATS) {
-    playheadBeat = 0;
-    playedIds.clear();
-    playStartTime = audioCtx.currentTime;
-    playStartBeat = 0;
+    playheadBeat = 0; playedIds.clear();
+    playStartTime = audioCtx.currentTime; playStartBeat = 0;
   }
-
-  const window_  = (1 / SUBDIVISIONS) * 0.6;
+  const win = (1 / SUBDIVISIONS) * 0.6;
   for (const n of notes) {
-    if (!playedIds.has(n.id) && Math.abs(n.start - playheadBeat) < window_) {
+    if (!playedIds.has(n.id) && Math.abs(n.start - playheadBeat) < win) {
       playedIds.add(n.id);
-      const cents   = pitchOffsets[n.pitch];
-      const hz      = pitchToHz(n.pitch, cents);
-      const durSec  = (n.duration / beatPerSec) * 0.92;
-      playTone(hz, durSec, n.velocity);
+      playTone(pitchToHz(n.pitch, pitchOffsets[n.pitch]), (n.duration / bps) * 0.92, n.velocity);
     }
   }
   drawGrid();
@@ -424,594 +358,376 @@ function seqTick() {
 }
 
 // ============================================================
-// 【Canvas 要素の参照】
+// Canvas
 // ============================================================
-const kbCanvas    = document.getElementById('keyboard-canvas');
-const kbCtx       = kbCanvas.getContext('2d');
-const gridCanvas  = document.getElementById('grid-canvas');
-const gridCtx     = gridCanvas.getContext('2d');
-const rulerCanvas = document.getElementById('ruler-canvas');
-const rulerCtx    = rulerCanvas.getContext('2d');
+const kbCanvas   = document.getElementById('keyboard-canvas');
+const kbCtx      = kbCanvas.getContext('2d');
+const gridCanvas = document.getElementById('grid-canvas');
+const gridCtx    = gridCanvas.getContext('2d');
+const rulerCanvas= document.getElementById('ruler-canvas');
+const rulerCtx   = rulerCanvas.getContext('2d');
 
 // ============================================================
-// 【サイズ計算・リサイズ】
+// リサイズ（デッドスペースなしで画面いっぱいに）
 // ============================================================
 function resizeCanvases() {
-  const area       = document.getElementById('piano-roll-area');
-  const transport  = document.getElementById('transport');
-  const areaH      = area.clientHeight;
-  const mainH      = areaH - RULER_H;
+  const areaH = document.getElementById('piano-roll-area').clientHeight;
+  // ルーラーを除いた高さを 8 等分 → ぴったり収まる
+  const rowH  = Math.floor((areaH - RULER_H) / TOTAL_NOTES);
+  const mainH = rowH * TOTAL_NOTES;
+  window._nh  = rowH;   // recomputeRows に伝える
 
   const corner = document.getElementById('ruler-corner');
   corner.style.width  = KB_W + 'px';
   corner.style.height = RULER_H + 'px';
 
-  rulerCanvas.width  = GRID_W;
-  rulerCanvas.height = RULER_H;
+  rulerCanvas.width  = GRID_W; rulerCanvas.height = RULER_H;
 
-  kbCanvas.width  = KB_W;
-  kbCanvas.height = mainH;
-  document.getElementById('keyboard-wrap').style.width  = KB_W + 'px';
-  document.getElementById('keyboard-wrap').style.height = mainH + 'px';
+  kbCanvas.width  = KB_W; kbCanvas.height = mainH;
+  document.getElementById('keyboard-wrap').style.cssText =
+    `width:${KB_W}px;height:${mainH}px;`;
 
-  gridCanvas.width  = GRID_W;
-  gridCanvas.height = mainH;
+  gridCanvas.width  = GRID_W; gridCanvas.height = mainH;
   document.getElementById('grid-wrap').style.height = mainH + 'px';
 
   drawAll();
 }
 
 // ============================================================
-// 【描画: ルーラー】
+// 描画: ルーラー
 // ============================================================
 function drawRuler() {
   const ctx = rulerCtx;
-  ctx.clearRect(0, 0, rulerCanvas.width, RULER_H);
-  ctx.fillStyle = C.bgLight;
-  ctx.fillRect(0, 0, GRID_W, RULER_H);
-
-  for (let beat = 0; beat <= TOTAL_BEATS; beat++) {
-    const x = beat * BEAT_W;
-    if (beat % 4 === 0) {
+  ctx.clearRect(0, 0, GRID_W, RULER_H);
+  ctx.fillStyle = C.bgLight; ctx.fillRect(0, 0, GRID_W, RULER_H);
+  for (let b = 0; b <= TOTAL_BEATS; b++) {
+    const x = b * BEAT_W;
+    if (b % 4 === 0) {
       ctx.strokeStyle = C.measure; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x, RULER_H); ctx.stroke();
-      ctx.fillStyle = C.measure;
-      ctx.font = 'bold 11px Courier New';
-      ctx.fillText(beat/4+1, x+4, RULER_H - 8);
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,RULER_H); ctx.stroke();
+      ctx.fillStyle = C.measure; ctx.font = 'bold 11px Courier New';
+      ctx.fillText(b/4+1, x+4, RULER_H-8);
     } else {
       ctx.strokeStyle = C.beat; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, RULER_H/2); ctx.lineTo(x, RULER_H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x,RULER_H/2); ctx.lineTo(x,RULER_H); ctx.stroke();
     }
   }
-  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(0, RULER_H-1); ctx.lineTo(GRID_W, RULER_H-1); ctx.stroke();
+  ctx.strokeStyle='#333'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,RULER_H-1); ctx.lineTo(GRID_W,RULER_H-1); ctx.stroke();
 }
 
 // ============================================================
-// 【描画: 鍵盤】
+// 描画: 鍵盤
 // ============================================================
 function drawKeyboard() {
   const ctx = kbCtx;
-  const h   = kbCanvas.height;
-  ctx.clearRect(0, 0, KB_W, h);
-
+  ctx.clearRect(0, 0, KB_W, kbCanvas.height);
   for (let i = 0; i < TOTAL_NOTES; i++) {
-    const p    = TOTAL_NOTES - 1 - i;
-    const name = NOTE_NAMES[p];
-    const isC  = (name === 'C');
-    const rt   = rowTops[i];
-    const rh   = rowHeights[i];
+    const p     = TOTAL_NOTES - 1 - i;
+    const name  = NOTE_NAMES[p];
+    const isC   = name === 'C';
+    const rt    = rowTops[i], rh = rowHeights[i];
     const cents = pitchOffsets[p];
 
-    // 背景
     ctx.fillStyle = isC ? C.keyC : C.keyWhite;
-    ctx.fillRect(0, rt, KB_W - 2, rh);
+    ctx.fillRect(0, rt, KB_W-2, rh);
 
-    // 左端チューニングバー
     if (Math.abs(cents) > 0.5) {
-      const ratio = Math.abs(cents) / MAX_CENTS;
-      const bh    = Math.max(2, ratio * rh / 2);
-      const mid   = rt + rh / 2;
+      const bh  = Math.max(2, (Math.abs(cents)/MAX_CENTS) * rh / 2);
+      const mid = rt + rh / 2;
       ctx.fillStyle = cents > 0 ? C.tunePos : C.tuneNeg;
       ctx.globalAlpha = 0.85;
-      ctx.fillRect(0, cents > 0 ? mid - bh : mid, 5, bh);
+      ctx.fillRect(0, cents > 0 ? mid-bh : mid, 5, bh);
       ctx.globalAlpha = 1;
     }
 
-    // 上端境界線（ホバー/ドラッグ中はハイライト）
     const isHot = (p === kbHoverBorderPitch || (kbIsTuning && p === kbTunePitch));
-    ctx.strokeStyle = isHot ? (cents >= 0 ? C.tunePos : C.tuneNeg) : C.keyBorder;
+    ctx.strokeStyle = isHot ? (cents>=0 ? C.tunePos : C.tuneNeg) : C.keyBorder;
     ctx.lineWidth   = isHot ? 2 : 1;
-    ctx.beginPath(); ctx.moveTo(0, rt); ctx.lineTo(KB_W-2, rt); ctx.stroke();
-
-    // 下端線
+    ctx.beginPath(); ctx.moveTo(0,rt); ctx.lineTo(KB_W-2,rt); ctx.stroke();
     ctx.strokeStyle = C.keyBorder; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, rt+rh-1); ctx.lineTo(KB_W-2, rt+rh-1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,rt+rh-1); ctx.lineTo(KB_W-2,rt+rh-1); ctx.stroke();
 
-    // 音名ラベル
     if (rh >= 14) {
-      const fs = Math.max(7, Math.min(14, Math.floor(rh / 5)));
+      const fs = Math.max(7, Math.min(14, Math.floor(rh/5)));
       ctx.fillStyle = isC ? C.keyCText : '#555';
-      ctx.font = `${isC ? 'bold' : 'normal'} ${fs}px Courier New`;
+      ctx.font = `${isC?'bold':'normal'} ${fs}px Courier New`;
       ctx.fillText(name, 7, rt + rh/2 + fs*0.35);
     }
-
-    // セント値（右端・大きめ）
     if (Math.abs(cents) > 0.5 && rh >= 10) {
-      const ci   = Math.round(cents);
-      const sign = ci > 0 ? '+' : '';
-      const fs   = Math.max(10, Math.min(16, Math.floor(rh / 3)));
-      ctx.fillStyle = cents > 0 ? C.tunePos : C.tuneNeg;
+      const ci = Math.round(cents), sign = ci>0?'+':'';
+      const fs = Math.max(10, Math.min(16, Math.floor(rh/3)));
+      ctx.fillStyle = cents>0 ? C.tunePos : C.tuneNeg;
       ctx.font = `bold ${fs}px Courier New`;
       ctx.textAlign = 'right';
-      ctx.fillText(`${sign}${ci}¢`, KB_W - 4, rt + rh/2 + fs*0.35);
+      ctx.fillText(`${sign}${ci}¢`, KB_W-4, rt+rh/2+fs*0.35);
       ctx.textAlign = 'left';
     }
   }
-
-  // 右端縦線
-  ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(KB_W-1, 0); ctx.lineTo(KB_W-1, h); ctx.stroke();
+  ctx.strokeStyle='#444'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(KB_W-1,0); ctx.lineTo(KB_W-1,kbCanvas.height); ctx.stroke();
 }
 
 // ============================================================
-// 【描画: グリッド】
+// 描画: グリッド
 // ============================================================
 function drawGrid() {
   const ctx = gridCtx;
-  const w   = GRID_W;
-  const h   = gridCanvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  // ---- 行の背景 + ガイド線 ----
+  ctx.clearRect(0, 0, GRID_W, gridCanvas.height);
   for (let i = 0; i < TOTAL_NOTES; i++) {
-    const p   = TOTAL_NOTES - 1 - i;
-    const rt  = rowTops[i];
-    const rh  = rowHeights[i];
-    const c   = pitchOffsets[p];
-
-    ctx.fillStyle = (NOTE_NAMES[p] === 'C') ? C.bgC : C.bgLight;
-    ctx.fillRect(0, rt, w, rh);
-
-    // チューニングガイド（点線）
-    if (Math.abs(c) > 0.5) {
-      ctx.strokeStyle = c > 0 ? C.tunePos : C.tuneNeg;
-      ctx.globalAlpha = 0.18;
-      ctx.setLineDash([4,6]);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, rt + rh/2);
-      ctx.lineTo(w, rt + rh/2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
+    const p  = TOTAL_NOTES-1-i, rt = rowTops[i], rh = rowHeights[i], cv = pitchOffsets[p];
+    ctx.fillStyle = NOTE_NAMES[p]==='C' ? C.bgC : C.bgLight;
+    ctx.fillRect(0, rt, GRID_W, rh);
+    if (Math.abs(cv) > 0.5) {
+      ctx.strokeStyle = cv>0 ? C.tunePos : C.tuneNeg;
+      ctx.globalAlpha = 0.18; ctx.setLineDash([4,6]); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(0,rt+rh/2); ctx.lineTo(GRID_W,rt+rh/2); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha=1;
     }
   }
-
-  // ---- 縦線（時間軸） ----
-  const cols = TOTAL_BEATS * SUBDIVISIONS;
-  for (let col = 0; col <= cols; col++) {
+  for (let col = 0; col <= TOTAL_BEATS*SUBDIVISIONS; col++) {
     const x = col * CELL_W;
-    if (col % (SUBDIVISIONS * 4) === 0) {
-      ctx.strokeStyle = C.measure; ctx.lineWidth = 1;
-    } else if (col % SUBDIVISIONS === 0) {
-      ctx.strokeStyle = C.beat; ctx.lineWidth = 1;
-    } else {
-      ctx.strokeStyle = C.sub; ctx.lineWidth = 1;
-    }
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, totalHeight()); ctx.stroke();
+    ctx.strokeStyle = col%(SUBDIVISIONS*4)===0 ? C.measure
+                    : col%SUBDIVISIONS===0      ? C.beat : C.sub;
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,totalHeight()); ctx.stroke();
   }
-
-  // ---- 横線（行境界） ----
-  ctx.strokeStyle = C.sub; ctx.lineWidth = 1;
-  for (let i = 0; i < TOTAL_NOTES; i++) {
-    ctx.beginPath(); ctx.moveTo(0, rowTops[i]); ctx.lineTo(w, rowTops[i]); ctx.stroke();
+  ctx.strokeStyle=C.sub; ctx.lineWidth=1;
+  for (let i=0;i<TOTAL_NOTES;i++){
+    ctx.beginPath(); ctx.moveTo(0,rowTops[i]); ctx.lineTo(GRID_W,rowTops[i]); ctx.stroke();
   }
-  ctx.beginPath(); ctx.moveTo(0, totalHeight()); ctx.lineTo(w, totalHeight()); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,totalHeight()); ctx.lineTo(GRID_W,totalHeight()); ctx.stroke();
 
-  // ---- 確定済みノート ----
-  for (const n of notes) drawNote(ctx, n, false);
+  for (const n of notes) drawNote(ctx,n,false);
+  if (dragState.mode==='placing'&&dragState.ghost) drawNote(ctx,dragState.ghost,true);
 
-  // ---- 配置中の仮ノート ----
-  if (dragState.mode === 'placing' && dragState.ghost)
-    drawNote(ctx, dragState.ghost, true);
-
-  // ---- 再生ヘッド ----
   if (isPlaying) {
-    const px = playheadBeat * BEAT_W;
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, totalHeight()); ctx.stroke();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(playheadBeat*BEAT_W,0); ctx.lineTo(playheadBeat*BEAT_W,totalHeight()); ctx.stroke();
   }
 }
 
 function drawNote(ctx, note, ghost) {
-  const r     = noteRect(note);
-  const cents = pitchOffsets[note.pitch];
-
+  const r = noteRect(note), cents = pitchOffsets[note.pitch];
   if (ghost) {
-    ctx.fillStyle   = 'rgba(100,200,255,0.55)';
-    ctx.strokeStyle = 'rgba(160,220,255,0.8)';
+    ctx.fillStyle='rgba(100,200,255,0.55)'; ctx.strokeStyle='rgba(160,220,255,0.8)';
   } else {
-    ctx.fillStyle   = centsToFill(cents, 220);
-    ctx.strokeStyle = cents > 0 ? 'rgba(255,210,80,0.85)'
-                    : cents < 0 ? 'rgba(190,140,255,0.85)'
-                    : 'rgba(255,130,150,0.8)';
+    ctx.fillStyle   = centsToFill(cents,220);
+    ctx.strokeStyle = cents>0?'rgba(255,210,80,0.85)':cents<0?'rgba(190,140,255,0.85)':'rgba(255,130,150,0.8)';
   }
-  ctx.lineWidth = 1;
-  ctx.fillRect(r.x, r.y, r.w, r.h);
-  ctx.strokeRect(r.x, r.y, r.w, r.h);
-
-  // ラベル
-  if (r.w > 22 && r.h > 8) {
-    const name = NOTE_NAMES[note.pitch];
-    const ci   = Math.round(cents);
-    const sign = ci > 0 ? '+' : '';
-    const lbl  = Math.abs(ci) > 0.5 ? `${name}${sign}${ci}¢` : name;
-    const fs   = Math.max(8, Math.min(13, Math.floor(r.h / 3)));
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${fs}px Courier New`;
-    ctx.textAlign = 'center';
-    ctx.fillText(lbl, r.x + r.w/2, r.y + r.h/2 + fs*0.35, r.w - 4);
-    ctx.textAlign = 'left';
+  ctx.lineWidth=1; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.strokeRect(r.x,r.y,r.w,r.h);
+  if (r.w>22&&r.h>8) {
+    const nm=NOTE_NAMES[note.pitch], ci=Math.round(cents), sign=ci>0?'+':'';
+    const lbl=Math.abs(ci)>0.5?`${nm}${sign}${ci}¢`:nm;
+    const fs=Math.max(8,Math.min(13,Math.floor(r.h/3)));
+    ctx.fillStyle='#fff'; ctx.font=`bold ${fs}px Courier New`;
+    ctx.textAlign='center'; ctx.fillText(lbl,r.x+r.w/2,r.y+r.h/2+fs*0.35,r.w-4); ctx.textAlign='left';
   }
 }
 
-function drawAll() {
-  recomputeRows();
-  drawRuler();
-  drawKeyboard();
-  drawGrid();
-}
+function drawAll() { recomputeRows(); drawRuler(); drawKeyboard(); drawGrid(); }
 
 // ============================================================
-// 【鍵盤マウス操作（チューニング境界ドラッグ）】
+// 鍵盤マウス操作
 // ============================================================
-let kbIsTuning        = false;
-let kbTunePitch       = -1;
-let kbTuneStartY      = 0;
-let kbTuneStartCents  = 0;
-let kbHoverBorderPitch= -1;
-// スライダー操作回数カウント（データ収集用）
-let sliderOpsCount = 0;
+let kbIsTuning=false, kbTunePitch=-1, kbTuneStartY=0, kbTuneStartCents=0, kbHoverBorderPitch=-1;
+let sliderOpsCount=0;
 
 function borderPitchAt(y) {
-  for (let i = 0; i < TOTAL_NOTES; i++) {
-    if (Math.abs(y - rowTops[i]) <= BORDER_HOT)
-      return TOTAL_NOTES - 1 - i;
-  }
-  const bot = totalHeight();
-  if (Math.abs(y - bot) <= BORDER_HOT) return 0;
+  for (let i=0;i<TOTAL_NOTES;i++)
+    if (Math.abs(y-rowTops[i])<=BORDER_HOT) return TOTAL_NOTES-1-i;
+  if (Math.abs(y-totalHeight())<=BORDER_HOT) return 0;
   return -1;
 }
 
 kbCanvas.addEventListener('mousemove', e => {
-  const y = e.offsetY;
-  if (kbIsTuning && kbTunePitch >= 0) {
-    const dy   = kbTuneStartY - y;
-    const nc   = Math.max(-MAX_CENTS, Math.min(MAX_CENTS, kbTuneStartCents + dy * CENTS_PER_PX));
-    pitchOffsets[kbTunePitch] = nc;
-    recomputeRows();
-    drawKeyboard();
-    drawGrid();
-    return;
+  const y=e.offsetY;
+  if (kbIsTuning&&kbTunePitch>=0) {
+    const nc=Math.max(-MAX_CENTS,Math.min(MAX_CENTS,kbTuneStartCents+(kbTuneStartY-y)*getCentsPx()));
+    pitchOffsets[kbTunePitch]=Math.round(nc);
+    recomputeRows(); drawKeyboard(); drawGrid(); return;
   }
-  const bp = borderPitchAt(y);
-  if (bp !== kbHoverBorderPitch) {
-    kbHoverBorderPitch = bp;
-    kbCanvas.style.cursor = bp >= 0 ? 'ns-resize' : 'default';
-    drawKeyboard();
+  const bp=borderPitchAt(y);
+  if (bp!==kbHoverBorderPitch) {
+    kbHoverBorderPitch=bp; kbCanvas.style.cursor=bp>=0?'ns-resize':'default'; drawKeyboard();
   }
 });
-
 kbCanvas.addEventListener('mousedown', e => {
-  e.preventDefault();
-  const y  = e.offsetY;
-  const bp = borderPitchAt(y);
-  if (bp >= 0) {
-    kbIsTuning       = true;
-    kbTunePitch      = bp;
-    kbTuneStartY     = y;
-    kbTuneStartCents = pitchOffsets[bp];
-    sliderOpsCount++;
-  } else {
-    const row = yToRow(y);
-    if (row >= 0) {
-      const pitch = TOTAL_NOTES - 1 - row;
-      const cents = pitchOffsets[pitch];
-      playTone(pitchToHz(pitch, cents), 0.5);
-      updateStatus(`発音: ${NOTE_NAMES[pitch]}  ${cents !== 0 ? (cents>0?'+':'')+Math.round(cents)+'¢' : ''}  (${pitchToHz(pitch,cents).toFixed(2)} Hz)`);
+  e.preventDefault(); const y=e.offsetY, bp=borderPitchAt(y);
+  if (bp>=0) { kbIsTuning=true; kbTunePitch=bp; kbTuneStartY=y; kbTuneStartCents=pitchOffsets[bp]; sliderOpsCount++; }
+  else {
+    const row=yToRow(y);
+    if (row>=0) {
+      const p=TOTAL_NOTES-1-row, cents=pitchOffsets[p];
+      playTone(pitchToHz(p,cents),0.5);
+      updateStatus(`発音: ${NOTE_NAMES[p]}  ${cents?(cents>0?'+':'')+Math.round(cents)+'¢':''}  (${pitchToHz(p,cents).toFixed(2)} Hz)`);
     }
   }
 });
-
-kbCanvas.addEventListener('mouseup', () => {
-  kbIsTuning = false; kbTunePitch = -1;
+kbCanvas.addEventListener('mouseup',   () => { kbIsTuning=false; kbTunePitch=-1; });
+kbCanvas.addEventListener('mouseleave',() => {
+  kbIsTuning=false; kbTunePitch=-1; kbHoverBorderPitch=-1;
+  kbCanvas.style.cursor='default'; drawKeyboard();
 });
-kbCanvas.addEventListener('mouseleave', () => {
-  kbIsTuning = false; kbTunePitch = -1;
-  kbHoverBorderPitch = -1;
-  kbCanvas.style.cursor = 'default';
-  drawKeyboard();
-});
-
 kbCanvas.addEventListener('dblclick', e => {
-  const bp = borderPitchAt(e.offsetY);
-  if (bp >= 0) {
-    pitchOffsets[bp] = 0;
-    recomputeRows(); drawKeyboard(); drawGrid();
-  }
+  const bp=borderPitchAt(e.offsetY);
+  if (bp>=0) { pitchOffsets[bp]=0; recomputeRows(); drawKeyboard(); drawGrid(); }
 });
 
 // ============================================================
-// 【グリッドマウス操作】
+// グリッドマウス操作
 // ============================================================
-const dragState = { mode: null, ghost: null, startX: 0, resizeNote: null, resizeStartDur: 0, resizeStartX: 0 };
+const dragState={mode:null,ghost:null,startX:0,resizeNote:null,resizeStartDur:0,resizeStartX:0};
 
-function snapBeat(b) {
-  const u = 1 / SUBDIVISIONS;
-  return Math.round(b / u) * u;
-}
+function snapBeat(b) { const u=1/SUBDIVISIONS; return Math.round(b/u)*u; }
 
-function noteAtPixel(px, py) {
-  for (let i = notes.length - 1; i >= 0; i--) {
-    const r = noteRect(notes[i]);
-    if (px >= r.x && px <= r.x+r.w && py >= r.y && py <= r.y+r.h) return notes[i];
+function noteAtPixel(px,py) {
+  for (let i=notes.length-1;i>=0;i--) {
+    const r=noteRect(notes[i]);
+    if (px>=r.x&&px<=r.x+r.w&&py>=r.y&&py<=r.y+r.h) return notes[i];
   }
   return null;
 }
-
-function resizeNoteAt(px, py) {
-  for (let i = notes.length - 1; i >= 0; i--) {
-    const r = noteRect(notes[i]);
-    if (py >= r.y && py <= r.y+r.h && px >= r.x+r.w - RESIZE_HOT && px <= r.x+r.w + 2)
-      return notes[i];
+function resizeNoteAt(px,py) {
+  for (let i=notes.length-1;i>=0;i--) {
+    const r=noteRect(notes[i]);
+    if (py>=r.y&&py<=r.y+r.h&&px>=r.x+r.w-RESIZE_HOT&&px<=r.x+r.w+2) return notes[i];
   }
   return null;
 }
 
 gridCanvas.addEventListener('mousemove', e => {
-  e.preventDefault();
-  const px = e.offsetX, py = e.offsetY;
-
-  if (dragState.mode === 'resize') {
-    const dx      = px - dragState.resizeStartX;
-    const minDur  = 1 / SUBDIVISIONS;
-    dragState.resizeNote.duration = Math.max(minDur, snapBeat(dragState.resizeStartDur + dx / BEAT_W));
+  e.preventDefault(); const px=e.offsetX,py=e.offsetY;
+  if (dragState.mode==='resize') {
+    dragState.resizeNote.duration=Math.max(1/SUBDIVISIONS,snapBeat(dragState.resizeStartDur+(px-dragState.resizeStartX)/BEAT_W));
     drawGrid(); return;
   }
-  if (dragState.mode === 'placing' && dragState.ghost) {
-    const dx  = px - dragState.startX;
-    const len = parseFloat(document.getElementById('len-sel').value);
-    dragState.ghost.duration = Math.max(1/SUBDIVISIONS, snapBeat(len + dx / BEAT_W));
+  if (dragState.mode==='placing'&&dragState.ghost) {
+    dragState.ghost.duration=Math.max(1/SUBDIVISIONS,snapBeat(parseFloat(document.getElementById('len-sel').value)+(px-dragState.startX)/BEAT_W));
     drawGrid(); return;
   }
-  // ホバー: カーソル変更
-  if (resizeNoteAt(px,py)) gridCanvas.style.cursor = 'ew-resize';
-  else gridCanvas.style.cursor = 'crosshair';
+  gridCanvas.style.cursor=resizeNoteAt(px,py)?'ew-resize':'crosshair';
 });
-
 gridCanvas.addEventListener('mousedown', e => {
-  e.preventDefault();
-  const px = e.offsetX, py = e.offsetY;
-
-  if (e.button === 2) { // 右クリック削除
-    const t = noteAtPixel(px, py);
-    if (t) { notes.splice(notes.indexOf(t), 1); drawGrid(); }
-    return;
-  }
-  if (e.button !== 0) return;
-
-  // リサイズ
-  const rn = resizeNoteAt(px, py);
-  if (rn) {
-    dragState.mode           = 'resize';
-    dragState.resizeNote     = rn;
-    dragState.resizeStartDur = rn.duration;
-    dragState.resizeStartX   = px;
-    return;
-  }
-  // 既存ノートの内部 → 何もしない
-  if (noteAtPixel(px, py)) return;
-
-  // 新規配置
-  const row = yToRow(py);
-  if (row < 0) return;
-  const pitch = TOTAL_NOTES - 1 - row;
-  const beat  = snapBeat(px / BEAT_W);
-  const len   = parseFloat(document.getElementById('len-sel').value);
-  const existing = notes.find(n => n.pitch === pitch && n.start <= beat && beat < n.start + n.duration);
-  if (existing) return;
-
-  dragState.mode    = 'placing';
-  dragState.startX  = px;
-  dragState.ghost   = newNote(pitch, beat, len);
-  drawGrid();
+  e.preventDefault(); const px=e.offsetX,py=e.offsetY;
+  if (e.button===2) { const t=noteAtPixel(px,py); if(t){notes.splice(notes.indexOf(t),1);drawGrid();} return; }
+  if (e.button!==0) return;
+  const rn=resizeNoteAt(px,py);
+  if (rn) { dragState.mode='resize';dragState.resizeNote=rn;dragState.resizeStartDur=rn.duration;dragState.resizeStartX=px; return; }
+  if (noteAtPixel(px,py)) return;
+  const row=yToRow(py); if(row<0)return;
+  const pitch=TOTAL_NOTES-1-row, beat=snapBeat(px/BEAT_W), len=parseFloat(document.getElementById('len-sel').value);
+  if (notes.find(n=>n.pitch===pitch&&n.start<=beat&&beat<n.start+n.duration)) return;
+  dragState.mode='placing'; dragState.startX=px; dragState.ghost=newNote(pitch,beat,len); drawGrid();
 });
-
 gridCanvas.addEventListener('mouseup', e => {
-  if (e.button !== 0) return;
-  if (dragState.mode === 'placing' && dragState.ghost) {
-    const g = dragState.ghost;
-    const existing = notes.find(n => n.pitch===g.pitch && n.start<=g.start && g.start < n.start+n.duration);
-    if (!existing) {
-      notes.push(g);
-      const cents = pitchOffsets[g.pitch];
-      playTone(pitchToHz(g.pitch, cents), 0.3);
+  if (e.button!==0) return;
+  if (dragState.mode==='placing'&&dragState.ghost) {
+    const g=dragState.ghost;
+    if (!notes.find(n=>n.pitch===g.pitch&&n.start<=g.start&&g.start<n.start+n.duration)) {
+      notes.push(g); playTone(pitchToHz(g.pitch,pitchOffsets[g.pitch]),0.3);
     }
   }
-  dragState.mode = null; dragState.ghost = null; dragState.resizeNote = null;
-  drawGrid();
+  dragState.mode=null; dragState.ghost=null; dragState.resizeNote=null; drawGrid();
 });
-
-gridCanvas.addEventListener('mouseleave', () => {
-  if (dragState.mode === 'placing') {
-    if (dragState.ghost) {
-      notes.push(dragState.ghost);
-      const cents = pitchOffsets[dragState.ghost.pitch];
-      playTone(pitchToHz(dragState.ghost.pitch, cents), 0.3);
-    }
-    dragState.mode = null; dragState.ghost = null;
-    drawGrid();
+gridCanvas.addEventListener('mouseleave',()=>{
+  if (dragState.mode==='placing') {
+    if(dragState.ghost){notes.push(dragState.ghost);playTone(pitchToHz(dragState.ghost.pitch,pitchOffsets[dragState.ghost.pitch]),0.3);}
+    dragState.mode=null; dragState.ghost=null; drawGrid();
   }
 });
-
-gridCanvas.addEventListener('contextmenu', e => e.preventDefault());
+gridCanvas.addEventListener('contextmenu',e=>e.preventDefault());
 
 // ============================================================
-// 【トランスポート操作】
+// トランスポート
 // ============================================================
-document.getElementById('btn-play').addEventListener('click', () => { if (!isPlaying) startPlay(); });
-document.getElementById('btn-stop').addEventListener('click', stopPlay);
+document.getElementById('btn-play').addEventListener('click',()=>{if(!isPlaying)startPlay();});
+document.getElementById('btn-stop').addEventListener('click',stopPlay);
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA')return;
+  if(e.code==='Space'&&!e.repeat){e.preventDefault();isPlaying?stopPlay():startPlay();}
+});
 
-document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-  if (e.code === 'Space' && !e.repeat) {
-    e.preventDefault();
-    if (isPlaying) stopPlay(); else startPlay();
-  }
+function updateStatus(msg){document.getElementById('status-msg').textContent=msg;}
+
+// ============================================================
+// 音楽経験ラジオボタン
+// ============================================================
+document.querySelectorAll('input[name="music-exp"]').forEach(r=>{
+  r.addEventListener('change',()=>{
+    const wrap=document.getElementById('exp-detail-wrap');
+    wrap.style.display=document.getElementById('exp-yes').checked?'block':'none';
+    if(!document.getElementById('exp-yes').checked)
+      document.getElementById('input-exp-detail').value='';
+  });
 });
 
 // ============================================================
-// 【ステータスバー】
+// データ収集・Supabase 送信
 // ============================================================
-function updateStatus(msg) {
-  document.getElementById('status-msg').textContent = msg;
-}
+let userId='', taskType='', musicExp='none', musicExpDetail='';
+let sessionStartTime=Date.now();
 
-// ============================================================
-// 【データ収集・Supabase 送信】
-// ============================================================
-let userId   = '';
-let taskType = '';
-let sessionStartTime = Date.now();
-
-// ユーザーIDモーダル
-document.getElementById('btn-login-ok').addEventListener('click', () => {
-  const uid = document.getElementById('input-uid').value.trim();
-  if (!uid) { alert('ユーザーIDを入力してください'); return; }
-  userId   = uid;
-  taskType = document.getElementById('input-task').value;
-  sessionStartTime = Date.now();
+document.getElementById('btn-login-ok').addEventListener('click',()=>{
+  const uid=document.getElementById('input-uid').value.trim();
+  if(!uid){alert('ユーザーIDを入力してください');return;}
+  userId         = uid;
+  taskType       = document.getElementById('input-task').value;
+  musicExp       = document.querySelector('input[name="music-exp"]:checked').value;
+  musicExpDetail = musicExp==='yes'?document.getElementById('input-exp-detail').value.trim():'';
+  sessionStartTime=Date.now();
   document.getElementById('modal-login').classList.add('hidden');
   updateStatus(`ユーザー: ${userId} | タスク: ${taskType} | スペース:再生/停止`);
 });
 
-// データを計算して送信
-document.getElementById('btn-submit').addEventListener('click', async () => {
-  if (!userId) { alert('ユーザーIDが未設定です'); return; }
-  if (notes.length === 0) { alert('ノートが1つもありません'); return; }
-
-  const btn = document.getElementById('btn-submit');
-  btn.disabled = true;
-  btn.textContent = '送信中…';
-
+document.getElementById('btn-submit').addEventListener('click',async()=>{
+  if(!userId){alert('ユーザーIDが未設定です');return;}
+  if(notes.length===0){alert('ノートが1つもありません');return;}
+  const btn=document.getElementById('btn-submit');
+  btn.disabled=true; btn.textContent='送信中…';
   try {
-    const bpm        = 90;   // 固定BPM
-    const beatPerSec = bpm / 60;
-
-    // ---- 収集データを計算 ----
-
-    // 1. 絶対的な音高（Hz）
-    const noteHz = notes.map(n => ({
-      note_id: n.id,
-      pitch:   n.pitch,
-      name:    NOTE_NAMES[n.pitch],
-      hz:      parseFloat(pitchToHz(n.pitch, pitchOffsets[n.pitch]).toFixed(4)),
-      start:   n.start,
-    }));
-
-    // 2. 基準Cからの絶対セント値
-    //    C3 = 130.81Hz を基準（0セント）として、各音の絶対セント値を計算
-    const baseCHz = BASE_HZ;
-    const noteCentsFromC = notes.map(n => {
-      const hz    = pitchToHz(n.pitch, pitchOffsets[n.pitch]);
-      const cents = 1200 * Math.log2(hz / baseCHz);
-      return { note_id: n.id, pitch: n.pitch, cents_from_c: parseFloat(cents.toFixed(2)) };
-    });
-
-    // 3. 12平均律からのオフセット（相対的なズレ）
-    //    各ノートのセントオフセット値そのもの
-    const offsetCents = notes.map(n => ({
-      note_id: n.id,
-      pitch:   n.pitch,
-      offset:  pitchOffsets[n.pitch],
-    }));
-
-    // 4. 隣り合う音との音程差（Interval）
-    //    時間順にソートして、連続する音の周波数比からセント差を計算
-    const sorted = [...notes].sort((a,b) => a.start - b.start || a.pitch - b.pitch);
-    const intervals = [];
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = sorted[i-1];
-      const curr = sorted[i];
-      const hzPrev = pitchToHz(prev.pitch, pitchOffsets[prev.pitch]);
-      const hzCurr = pitchToHz(curr.pitch, pitchOffsets[curr.pitch]);
-      intervals.push({
-        from_note_id: prev.id,
-        to_note_id:   curr.id,
-        from_name:    NOTE_NAMES[prev.pitch],
-        to_name:      NOTE_NAMES[curr.pitch],
-        interval_cents: parseFloat((1200 * Math.log2(hzCurr / hzPrev)).toFixed(2)),
-      });
+    const bpm=90, bps=bpm/60;
+    const noteHz=notes.map(n=>({note_id:n.id,pitch:n.pitch,name:NOTE_NAMES[n.pitch],hz:parseFloat(pitchToHz(n.pitch,pitchOffsets[n.pitch]).toFixed(4)),start:n.start}));
+    const noteCentsFromC=notes.map(n=>{const hz=pitchToHz(n.pitch,pitchOffsets[n.pitch]);return{note_id:n.id,pitch:n.pitch,cents_from_c:parseFloat((1200*Math.log2(hz/BASE_HZ)).toFixed(2))};});
+    const offsetCents=notes.map(n=>({note_id:n.id,pitch:n.pitch,offset:pitchOffsets[n.pitch]}));
+    const sorted=[...notes].sort((a,b)=>a.start-b.start||a.pitch-b.pitch);
+    const intervals=[];
+    for(let i=1;i<sorted.length;i++){
+      const p=sorted[i-1],c=sorted[i];
+      intervals.push({from_note_id:p.id,to_note_id:c.id,from_name:NOTE_NAMES[p.pitch],to_name:NOTE_NAMES[c.pitch],
+        interval_cents:parseFloat((1200*Math.log2(pitchToHz(c.pitch,pitchOffsets[c.pitch])/pitchToHz(p.pitch,pitchOffsets[p.pitch]))).toFixed(2))});
     }
+    const pitchOffsetRecord={};
+    for(let p=0;p<TOTAL_NOTES;p++) pitchOffsetRecord[p]=pitchOffsets[p];
 
-    // 5. 制作時間
-    const durationSec = Math.round((Date.now() - sessionStartTime) / 1000);
-
-    // 6. ピッチオフセット一覧
-    const pitchOffsetRecord = {};
-    for (let p = 0; p < TOTAL_NOTES; p++) pitchOffsetRecord[p] = pitchOffsets[p];
-
-    // ---- Supabase に送信 ----
-    await supabaseInsert('sessions', {
-      user_id:             userId,
-      task_type:           taskType,
+    await supabaseInsert('sessions',{
+      user_id:userId, task_type:taskType,
+      music_exp:musicExp, music_exp_detail:musicExpDetail,
       bpm,
-      notes:               notes.map(n => ({
-        id: n.id, pitch: n.pitch, start: n.start,
-        duration: n.duration, velocity: n.velocity,
-      })),
-      pitch_offsets:       pitchOffsetRecord,
-      note_hz:             noteHz,
-      note_cents_from_c:   noteCentsFromC,
-      offset_cents:        offsetCents,
-      intervals,
-      duration_sec:        durationSec,
-      slider_ops:          sliderOpsCount,
+      notes:notes.map(n=>({id:n.id,pitch:n.pitch,start:n.start,duration:n.duration,velocity:n.velocity})),
+      pitch_offsets:pitchOffsetRecord, note_hz:noteHz, note_cents_from_c:noteCentsFromC,
+      offset_cents:offsetCents, intervals,
+      duration_sec:Math.round((Date.now()-sessionStartTime)/1000),
+      slider_ops:sliderOpsCount,
     });
 
-    // 成功
-    document.getElementById('modal-done-msg').textContent =
-      `データを保存しました。ノート数: ${notes.length}件、制作時間: ${durationSec}秒`;
+    document.getElementById('modal-done-msg').textContent=
+      `データを保存しました。ノート数: ${notes.length}件、制作時間: ${Math.round((Date.now()-sessionStartTime)/1000)}秒`;
     document.getElementById('modal-done').classList.remove('hidden');
-    sliderOpsCount = 0;
-    sessionStartTime = Date.now();
-
-  } catch (err) {
-    alert(`送信エラー: ${err.message}\n\nSupabase の URL/KEY が正しく設定されているか確認してください。`);
-    console.error(err);
+    sliderOpsCount=0; sessionStartTime=Date.now();
+  } catch(err) {
+    alert(`送信エラー: ${err.message}`); console.error(err);
   }
-
-  btn.disabled = false;
-  btn.textContent = '💾 データ保存';
+  btn.disabled=false; btn.textContent='💾 データ保存';
 });
 
-document.getElementById('btn-done-ok').addEventListener('click', () => {
+document.getElementById('btn-done-ok').addEventListener('click',()=>{
   document.getElementById('modal-done').classList.add('hidden');
 });
 
 // ============================================================
-// 【サンプルノート（初期表示）】
+// 起動
 // ============================================================
-function addSampleNotes() {
-  // 初期ノートなし
-}
-
-// ============================================================
-// 【起動】
-// ============================================================
-recomputeRows();
-addSampleNotes();
 window.addEventListener('resize', resizeCanvases);
 resizeCanvases();
 </script>
