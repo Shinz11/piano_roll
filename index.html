@@ -689,8 +689,8 @@ kbCanvas.addEventListener('mousemove', e => {
   const y = e.offsetY;
   if (kbIsTuning && kbTunePitch >= 0) {
     const dy   = kbTuneStartY - y;
-    const nc   = Math.max(-MAX_CENTS, Math.min(MAX_CENTS, kbTuneStartCents + dy * CENTS_PER_PX));
-    pitchOffsets[kbTunePitch] = nc;
+    const nc = Math.max(-MAX_CENTS, Math.min(MAX_CENTS, kbTuneStartCents + dy * CENTS_PER_PX));
+    pitchOffsets[kbTunePitch] = Math.round(nc);  // ← Math.round() で整数に丸める
     recomputeRows();
     drawKeyboard();
     drawGrid();
