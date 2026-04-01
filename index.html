@@ -35,10 +35,6 @@ body {
 #btn-stop  { background:#6b1e1e; color:#fff; border:1px solid #b82e2e; }
 #btn-stop:hover  { background:#7a2525; }
 #btn-stop:disabled { background:#3a1a1a; color:#886655; }
-#btn-record { background:#6b1e3a; color:#fff; border:1px solid #b82e6a; }
-#btn-record:hover { background:#7a2545; }
-#btn-record.recording { background:#b82e2e; animation: pulse 1.5s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 .vsep { width:1px; height:36px; background:#333355; flex-shrink:0; }
 .t-lbl { color:#8b949e; font-size:11px; white-space:nowrap; }
 #len-sel {
@@ -150,7 +146,6 @@ body {
 <div id="transport">
   <button class="t-btn" id="btn-play">▶ 再生</button>
   <button class="t-btn" id="btn-stop" disabled>■ 停止</button>
-  <button class="t-btn" id="btn-record">● 録音</button>
   <div class="vsep"></div>
   <span class="t-lbl">BPM</span>
   <span style="color:#e0e0e0;font-size:15px;font-weight:bold;padding:0 4px;">90</span>
@@ -322,91 +317,6 @@ function playTone(hz, durationSec, velocity=100) {
 }
 
 // ============================================================
-// 録音機能
-// ============================================================
-let isRecording = false;
-let mediaRecorder = null;
-let recordedChunks = [];
-let recDest = null;
-
-async function startRecording() {
-  ensureAudio();
-  recordedChunks = [];
-  
-  // MediaStreamDestination を作成
-  recDest = audioCtx.createMediaStreamDestination();
-  
-  // MediaRecorder を作成
-  try {
-    mediaRecorder = new MediaRecorder(recDest.stream, {
-      mimeType: 'audio/webm;codecs=opus'
-    });
-  } catch(e) {
-    mediaRecorder = new MediaRecorder(recDest.stream);
-  }
-  
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) recordedChunks.push(e.data);
-  };
-  
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `microtonal-piano-roll-${Date.now()}.webm`;
-    a.click();
-    URL.revokeObjectURL(url);
-    updateStatus('録音を保存しました');
-  };
-  
-  mediaRecorder.start();
-  isRecording = true;
-  document.getElementById('btn-record').classList.add('recording');
-  document.getElementById('btn-record').textContent = '● 録音中';
-  updateStatus('録音中...');
-}
-
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-  }
-  isRecording = false;
-  recDest = null;
-  document.getElementById('btn-record').classList.remove('recording');
-  document.getElementById('btn-record').textContent = '● 録音';
-}
-
-// playTone を録音対応に修正
-function playToneOriginal(hz, durationSec, velocity=100) {
-  ensureAudio();
-  const now  = audioCtx.currentTime;
-  const vol  = (velocity / 127) * 0.28;
-  const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(vol, now + 0.01);
-  gain.gain.setValueAtTime(vol, now + durationSec - 0.06);
-  gain.gain.linearRampToValueAtTime(0, now + durationSec);
-  
-  // 通常の出力先
-  gain.connect(audioCtx.destination);
-  
-  // 録音中なら録音先にも接続
-  if (isRecording && recDest) {
-    gain.connect(recDest);
-  }
-  
-  const osc  = audioCtx.createOscillator();
-  osc.type   = 'sine';
-  osc.frequency.value = hz;
-  osc.connect(gain);
-  osc.start(now); osc.stop(now + durationSec);
-}
-
-// playTone を上書き
-playTone = playToneOriginal;
-
-// ============================================================
 // シーケンサー
 // ============================================================
 let isPlaying = false, playheadBeat = 0, playStartTime = 0, playStartBeat = 0;
@@ -555,4 +465,271 @@ function drawKeyboard() {
     }
   }
   ctx.strokeStyle='#444'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(KB_W-1,0); ctx.lineTo(KB_W-1,kbCanvas.height);
+  ctx.beginPath(); ctx.moveTo(KB_W-1,0); ctx.lineTo(KB_W-1,kbCanvas.height); ctx.stroke();
+}
+
+// ============================================================
+// 描画: グリッド
+// ============================================================
+function drawGrid() {
+  const ctx = gridCtx;
+  ctx.clearRect(0, 0, GRID_W, gridCanvas.height);
+  for (let i = 0; i < TOTAL_NOTES; i++) {
+    const p  = TOTAL_NOTES-1-i, rt = rowTops[i], rh = rowHeights[i], cv = pitchOffsets[p];
+    ctx.fillStyle = NOTE_NAMES[p]==='C' ? C.bgC : C.bgLight;
+    ctx.fillRect(0, rt, GRID_W, rh);
+    if (Math.abs(cv) > 0.5) {
+      ctx.strokeStyle = cv>0 ? C.tunePos : C.tuneNeg;
+      ctx.globalAlpha = 0.18; ctx.setLineDash([4,6]); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(0,rt+rh/2); ctx.lineTo(GRID_W,rt+rh/2); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha=1;
+    }
+  }
+  for (let col = 0; col <= TOTAL_BEATS*SUBDIVISIONS; col++) {
+    const x = col * CELL_W;
+    ctx.strokeStyle = col%(SUBDIVISIONS*4)===0 ? C.measure
+                    : col%SUBDIVISIONS===0      ? C.beat : C.sub;
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,totalHeight()); ctx.stroke();
+  }
+  ctx.strokeStyle=C.sub; ctx.lineWidth=1;
+  for (let i=0;i<TOTAL_NOTES;i++){
+    ctx.beginPath(); ctx.moveTo(0,rowTops[i]); ctx.lineTo(GRID_W,rowTops[i]); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(0,totalHeight()); ctx.lineTo(GRID_W,totalHeight()); ctx.stroke();
+
+  for (const n of notes) drawNote(ctx,n,false);
+  if (dragState.mode==='placing'&&dragState.ghost) drawNote(ctx,dragState.ghost,true);
+
+  if (isPlaying) {
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(playheadBeat*BEAT_W,0); ctx.lineTo(playheadBeat*BEAT_W,totalHeight()); ctx.stroke();
+  }
+}
+
+function drawNote(ctx, note, ghost) {
+  const r = noteRect(note), cents = pitchOffsets[note.pitch];
+  if (ghost) {
+    ctx.fillStyle='rgba(100,200,255,0.55)'; ctx.strokeStyle='rgba(160,220,255,0.8)';
+  } else {
+    ctx.fillStyle   = centsToFill(cents,220);
+    ctx.strokeStyle = cents>0?'rgba(255,210,80,0.85)':cents<0?'rgba(190,140,255,0.85)':'rgba(255,130,150,0.8)';
+  }
+  ctx.lineWidth=1; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.strokeRect(r.x,r.y,r.w,r.h);
+  if (r.w>22&&r.h>8) {
+    const nm=NOTE_NAMES[note.pitch], ci=Math.round(cents), sign=ci>0?'+':'';
+    const lbl=Math.abs(ci)>0.5?`${nm}${sign}${ci}¢`:nm;
+    const fs=Math.max(8,Math.min(13,Math.floor(r.h/3)));
+    ctx.fillStyle='#fff'; ctx.font=`bold ${fs}px Courier New`;
+    ctx.textAlign='center'; ctx.fillText(lbl,r.x+r.w/2,r.y+r.h/2+fs*0.35,r.w-4); ctx.textAlign='left';
+  }
+}
+
+function drawAll() { recomputeRows(); drawRuler(); drawKeyboard(); drawGrid(); }
+
+// ============================================================
+// 鍵盤マウス操作
+// ============================================================
+let kbIsTuning=false, kbTunePitch=-1, kbTuneStartY=0, kbTuneStartCents=0, kbHoverBorderPitch=-1;
+let sliderOpsCount=0;
+
+function borderPitchAt(y) {
+  for (let i=0;i<TOTAL_NOTES;i++)
+    if (Math.abs(y-rowTops[i])<=BORDER_HOT) return TOTAL_NOTES-1-i;
+  if (Math.abs(y-totalHeight())<=BORDER_HOT) return 0;
+  return -1;
+}
+
+kbCanvas.addEventListener('mousemove', e => {
+  const y=e.offsetY;
+  if (kbIsTuning&&kbTunePitch>=0) {
+    const nc=Math.max(-MAX_CENTS,Math.min(MAX_CENTS,kbTuneStartCents+(kbTuneStartY-y)*getCentsPx()));
+    pitchOffsets[kbTunePitch]=Math.round(nc);
+    recomputeRows(); drawKeyboard(); drawGrid(); return;
+  }
+  const bp=borderPitchAt(y);
+  if (bp!==kbHoverBorderPitch) {
+    kbHoverBorderPitch=bp; kbCanvas.style.cursor=bp>=0?'ns-resize':'default'; drawKeyboard();
+  }
+});
+kbCanvas.addEventListener('mousedown', e => {
+  e.preventDefault(); const y=e.offsetY, bp=borderPitchAt(y);
+  if (bp>=0) { kbIsTuning=true; kbTunePitch=bp; kbTuneStartY=y; kbTuneStartCents=pitchOffsets[bp]; sliderOpsCount++; }
+  else {
+    const row=yToRow(y);
+    if (row>=0) {
+      const p=TOTAL_NOTES-1-row, cents=pitchOffsets[p];
+      playTone(pitchToHz(p,cents),0.5);
+      updateStatus(`発音: ${NOTE_NAMES[p]}  ${cents?(cents>0?'+':'')+Math.round(cents)+'¢':''}  (${pitchToHz(p,cents).toFixed(2)} Hz)`);
+    }
+  }
+});
+kbCanvas.addEventListener('mouseup',   () => { kbIsTuning=false; kbTunePitch=-1; });
+kbCanvas.addEventListener('mouseleave',() => {
+  kbIsTuning=false; kbTunePitch=-1; kbHoverBorderPitch=-1;
+  kbCanvas.style.cursor='default'; drawKeyboard();
+});
+kbCanvas.addEventListener('dblclick', e => {
+  const bp=borderPitchAt(e.offsetY);
+  if (bp>=0) { pitchOffsets[bp]=0; recomputeRows(); drawKeyboard(); drawGrid(); }
+});
+
+// ============================================================
+// グリッドマウス操作
+// ============================================================
+const dragState={mode:null,ghost:null,startX:0,resizeNote:null,resizeStartDur:0,resizeStartX:0};
+
+function snapBeat(b) { const u=1/SUBDIVISIONS; return Math.round(b/u)*u; }
+
+function noteAtPixel(px,py) {
+  for (let i=notes.length-1;i>=0;i--) {
+    const r=noteRect(notes[i]);
+    if (px>=r.x&&px<=r.x+r.w&&py>=r.y&&py<=r.y+r.h) return notes[i];
+  }
+  return null;
+}
+function resizeNoteAt(px,py) {
+  for (let i=notes.length-1;i>=0;i--) {
+    const r=noteRect(notes[i]);
+    if (py>=r.y&&py<=r.y+r.h&&px>=r.x+r.w-RESIZE_HOT&&px<=r.x+r.w+2) return notes[i];
+  }
+  return null;
+}
+
+gridCanvas.addEventListener('mousemove', e => {
+  e.preventDefault(); const px=e.offsetX,py=e.offsetY;
+  if (dragState.mode==='resize') {
+    dragState.resizeNote.duration=Math.max(1/SUBDIVISIONS,snapBeat(dragState.resizeStartDur+(px-dragState.resizeStartX)/BEAT_W));
+    drawGrid(); return;
+  }
+  if (dragState.mode==='placing'&&dragState.ghost) {
+    dragState.ghost.duration=Math.max(1/SUBDIVISIONS,snapBeat(parseFloat(document.getElementById('len-sel').value)+(px-dragState.startX)/BEAT_W));
+    drawGrid(); return;
+  }
+  gridCanvas.style.cursor=resizeNoteAt(px,py)?'ew-resize':'crosshair';
+});
+gridCanvas.addEventListener('mousedown', e => {
+  e.preventDefault(); const px=e.offsetX,py=e.offsetY;
+  if (e.button===2) { const t=noteAtPixel(px,py); if(t){notes.splice(notes.indexOf(t),1);drawGrid();} return; }
+  if (e.button!==0) return;
+  const rn=resizeNoteAt(px,py);
+  if (rn) { dragState.mode='resize';dragState.resizeNote=rn;dragState.resizeStartDur=rn.duration;dragState.resizeStartX=px; return; }
+  if (noteAtPixel(px,py)) return;
+  const row=yToRow(py); if(row<0)return;
+  const pitch=TOTAL_NOTES-1-row, beat=snapBeat(px/BEAT_W), len=parseFloat(document.getElementById('len-sel').value);
+  if (notes.find(n=>n.pitch===pitch&&n.start<=beat&&beat<n.start+n.duration)) return;
+  dragState.mode='placing'; dragState.startX=px; dragState.ghost=newNote(pitch,beat,len); drawGrid();
+});
+gridCanvas.addEventListener('mouseup', e => {
+  if (e.button!==0) return;
+  if (dragState.mode==='placing'&&dragState.ghost) {
+    const g=dragState.ghost;
+    if (!notes.find(n=>n.pitch===g.pitch&&n.start<=g.start&&g.start<n.start+n.duration)) {
+      notes.push(g); playTone(pitchToHz(g.pitch,pitchOffsets[g.pitch]),0.3);
+    }
+  }
+  dragState.mode=null; dragState.ghost=null; dragState.resizeNote=null; drawGrid();
+});
+gridCanvas.addEventListener('mouseleave',()=>{
+  if (dragState.mode==='placing') {
+    if(dragState.ghost){notes.push(dragState.ghost);playTone(pitchToHz(dragState.ghost.pitch,pitchOffsets[dragState.ghost.pitch]),0.3);}
+    dragState.mode=null; dragState.ghost=null; drawGrid();
+  }
+});
+gridCanvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ============================================================
+// トランスポート
+// ============================================================
+document.getElementById('btn-play').addEventListener('click',()=>{if(!isPlaying)startPlay();});
+document.getElementById('btn-stop').addEventListener('click',stopPlay);
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA')return;
+  if(e.code==='Space'&&!e.repeat){e.preventDefault();isPlaying?stopPlay():startPlay();}
+});
+
+function updateStatus(msg){document.getElementById('status-msg').textContent=msg;}
+
+// ============================================================
+// 音楽経験ラジオボタン
+// ============================================================
+document.querySelectorAll('input[name="music-exp"]').forEach(r=>{
+  r.addEventListener('change',()=>{
+    const wrap=document.getElementById('exp-detail-wrap');
+    wrap.style.display=document.getElementById('exp-yes').checked?'block':'none';
+    if(!document.getElementById('exp-yes').checked)
+      document.getElementById('input-exp-detail').value='';
+  });
+});
+
+// ============================================================
+// データ収集・Supabase 送信
+// ============================================================
+let userId='', taskType='', musicExp='none', musicExpDetail='';
+let sessionStartTime=Date.now();
+
+document.getElementById('btn-login-ok').addEventListener('click',()=>{
+  const uid=document.getElementById('input-uid').value.trim();
+  if(!uid){alert('ユーザーIDを入力してください');return;}
+  userId         = uid;
+  taskType       = document.getElementById('input-task').value;
+  musicExp       = document.querySelector('input[name="music-exp"]:checked').value;
+  musicExpDetail = musicExp==='yes'?document.getElementById('input-exp-detail').value.trim():'';
+  sessionStartTime=Date.now();
+  document.getElementById('modal-login').classList.add('hidden');
+  updateStatus(`ユーザー: ${userId} | タスク: ${taskType} | スペース:再生/停止`);
+});
+
+document.getElementById('btn-submit').addEventListener('click',async()=>{
+  if(!userId){alert('ユーザーIDが未設定です');return;}
+  if(notes.length===0){alert('ノートが1つもありません');return;}
+  const btn=document.getElementById('btn-submit');
+  btn.disabled=true; btn.textContent='送信中…';
+  try {
+    const bpm=90, bps=bpm/60;
+    const noteHz=notes.map(n=>({note_id:n.id,pitch:n.pitch,name:NOTE_NAMES[n.pitch],hz:parseFloat(pitchToHz(n.pitch,pitchOffsets[n.pitch]).toFixed(4)),start:n.start}));
+    const noteCentsFromC=notes.map(n=>{const hz=pitchToHz(n.pitch,pitchOffsets[n.pitch]);return{note_id:n.id,pitch:n.pitch,cents_from_c:parseFloat((1200*Math.log2(hz/BASE_HZ)).toFixed(2))};});
+    const offsetCents=notes.map(n=>({note_id:n.id,pitch:n.pitch,offset:pitchOffsets[n.pitch]}));
+    const sorted=[...notes].sort((a,b)=>a.start-b.start||a.pitch-b.pitch);
+    const intervals=[];
+    for(let i=1;i<sorted.length;i++){
+      const p=sorted[i-1],c=sorted[i];
+      intervals.push({from_note_id:p.id,to_note_id:c.id,from_name:NOTE_NAMES[p.pitch],to_name:NOTE_NAMES[c.pitch],
+        interval_cents:parseFloat((1200*Math.log2(pitchToHz(c.pitch,pitchOffsets[c.pitch])/pitchToHz(p.pitch,pitchOffsets[p.pitch]))).toFixed(2))});
+    }
+    const pitchOffsetRecord={};
+    for(let p=0;p<TOTAL_NOTES;p++) pitchOffsetRecord[p]=pitchOffsets[p];
+
+    await supabaseInsert('sessions',{
+      user_id:userId, task_type:taskType,
+      music_exp:musicExp, music_exp_detail:musicExpDetail,
+      bpm,
+      notes:notes.map(n=>({id:n.id,pitch:n.pitch,start:n.start,duration:n.duration,velocity:n.velocity})),
+      pitch_offsets:pitchOffsetRecord, note_hz:noteHz, note_cents_from_c:noteCentsFromC,
+      offset_cents:offsetCents, intervals,
+      duration_sec:Math.round((Date.now()-sessionStartTime)/1000),
+      slider_ops:sliderOpsCount,
+    });
+
+    document.getElementById('modal-done-msg').textContent=
+      `データを保存しました。ノート数: ${notes.length}件、制作時間: ${Math.round((Date.now()-sessionStartTime)/1000)}秒`;
+    document.getElementById('modal-done').classList.remove('hidden');
+    sliderOpsCount=0; sessionStartTime=Date.now();
+  } catch(err) {
+    alert(`送信エラー: ${err.message}`); console.error(err);
+  }
+  btn.disabled=false; btn.textContent='💾 データ保存';
+});
+
+document.getElementById('btn-done-ok').addEventListener('click',()=>{
+  document.getElementById('modal-done').classList.add('hidden');
+});
+
+// ============================================================
+// 起動
+// ============================================================
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+</script>
+</body>
+</html>
