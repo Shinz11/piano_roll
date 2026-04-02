@@ -19,7 +19,7 @@ body {
 #main-row { flex: 1; display: flex; min-height: 0; }
 #keyboard-wrap { flex-shrink: 0; overflow: hidden; }
 #keyboard-canvas { display: block; }
-#grid-wrap { flex: 1; overflow-x: auto; overflow-y: hidden; }
+#grid-wrap { flex: 1; overflow-x: hidden; overflow-y: hidden; }
 #grid-canvas { display: block; }
 #transport {
   flex-shrink: 0; background: #0d1117; border-top: 1px solid #333355;
@@ -192,12 +192,12 @@ async function supabaseInsert(table, record) {
 // 定数
 // ============================================================
 const TOTAL_NOTES  = 8;
-const NOTE_NAMES   = ["1","2","3","4","5","6","7","1"];
+const NOTE_NAMES   = ["C","D","E","F","G","A","B","C"];
 // 7平均律: 1オクターブ(1200¢)を7等分 → 1ステップ = 1200/7 ≈ 171.43¢
 // pitchOffsets による微調整は引き続き有効
 const EDO7_STEP_CENTS = 1200 / 7;           // ≈ 171.4286¢
 const EDO7_SEMITONES  = Array.from({length: 8}, (_, i) => i * EDO7_STEP_CENTS / 100);
-const BASE_HZ      = 261.62;
+const BASE_HZ      = 130.81;
 const MAX_CENTS    = 200.0;
 
 // Cのピッチインデックス（下=0, 上=7）
@@ -205,15 +205,16 @@ const C_LOW  = 0;
 const C_HIGH = 7;
 
 const NOTE_H       = 90;
-const BEAT_W       = 160;
 const SUBDIVISIONS = 4;
-const CELL_W       = BEAT_W / SUBDIVISIONS;
-const TOTAL_BEATS  = 16;
-const GRID_W       = BEAT_W * TOTAL_BEATS;
+const TOTAL_BEATS  = 16;   // 4拍×4小節
 const KB_W         = 160;
 const RULER_H      = 30;
 const BORDER_HOT   = 8;
 const RESIZE_HOT   = 14;
+// BEAT_W・CELL_W・GRID_W は resizeCanvases() で動的計算
+let BEAT_W = 160;
+let CELL_W = BEAT_W / SUBDIVISIONS;
+let GRID_W = BEAT_W * TOTAL_BEATS;
 
 const C = {
   bgC:"#0f3460", bgLight:"#16213e",
@@ -340,13 +341,40 @@ function playTone(hz, durationSec, velocity=100) {
   gain.gain.linearRampToValueAtTime(vol, now + 0.01);
   gain.gain.setValueAtTime(vol, now + durationSec - 0.06);
   gain.gain.linearRampToValueAtTime(0, now + durationSec);
-  // masterGain 経由で destination & recDestNode 両方へ流れる
   gain.connect(masterGain);
   const osc  = audioCtx.createOscillator();
   osc.type   = 'sine';
   osc.frequency.value = hz;
   osc.connect(gain);
   osc.start(now); osc.stop(now + durationSec);
+}
+
+// チューニングドラッグ中の持続音（リアルタイムピッチ変更対応）
+let tuneOsc = null, tuneGain = null;
+function startTuneOsc(hz) {
+  ensureAudio();
+  stopTuneOsc();
+  tuneGain = audioCtx.createGain();
+  tuneGain.gain.setValueAtTime(0, audioCtx.currentTime);
+  tuneGain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.02);
+  tuneGain.connect(masterGain);
+  tuneOsc = audioCtx.createOscillator();
+  tuneOsc.type = 'sine';
+  tuneOsc.frequency.value = hz;
+  tuneOsc.connect(tuneGain);
+  tuneOsc.start();
+}
+function updateTuneOsc(hz) {
+  if (tuneOsc) tuneOsc.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.01);
+}
+function stopTuneOsc() {
+  if (tuneOsc) {
+    try {
+      tuneGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+      tuneOsc.stop(audioCtx.currentTime + 0.08);
+    } catch(e) {}
+    tuneOsc = null; tuneGain = null;
+  }
 }
 
 // ============================================================
@@ -454,9 +482,15 @@ const rulerCtx   = rulerCanvas.getContext('2d');
 // ============================================================
 function resizeCanvases() {
   const areaH = document.getElementById('piano-roll-area').clientHeight;
+  const areaW = document.getElementById('grid-wrap').clientWidth;
   const rowH  = Math.floor((areaH - RULER_H) / TOTAL_NOTES);
   const mainH = rowH * TOTAL_NOTES;
   window._nh  = rowH;
+
+  // 4小節（16拍）がスクロールなしでぴったり収まるよう BEAT_W を計算
+  BEAT_W = Math.floor(areaW / TOTAL_BEATS);
+  CELL_W = BEAT_W / SUBDIVISIONS;
+  GRID_W = BEAT_W * TOTAL_BEATS;
 
   const corner = document.getElementById('ruler-corner');
   corner.style.width  = KB_W + 'px';
@@ -634,6 +668,8 @@ kbCanvas.addEventListener('mousemove', e => {
     pitchOffsets[kbTunePitch]=Math.round(nc);
     // C連動
     syncCPitches(kbTunePitch);
+    // ドラッグ中リアルタイム発音
+    updateTuneOsc(pitchToHz(kbTunePitch, pitchOffsets[kbTunePitch]));
     recomputeRows(); drawKeyboard(); drawGrid(); return;
   }
   const bp=borderPitchAt(y);
@@ -643,8 +679,11 @@ kbCanvas.addEventListener('mousemove', e => {
 });
 kbCanvas.addEventListener('mousedown', e => {
   e.preventDefault(); const y=e.offsetY, bp=borderPitchAt(y);
-  if (bp>=0) { kbIsTuning=true; kbTunePitch=bp; kbTuneStartY=y; kbTuneStartCents=pitchOffsets[bp]; sliderOpsCount++; }
-  else {
+  if (bp>=0) {
+    kbIsTuning=true; kbTunePitch=bp; kbTuneStartY=y; kbTuneStartCents=pitchOffsets[bp]; sliderOpsCount++;
+    // ドラッグ開始時に音を鳴らす
+    startTuneOsc(pitchToHz(bp, pitchOffsets[bp]));
+  } else {
     const row=yToRow(y);
     if (row>=0) {
       const p=TOTAL_NOTES-1-row, cents=pitchOffsets[p];
@@ -653,8 +692,12 @@ kbCanvas.addEventListener('mousedown', e => {
     }
   }
 });
-kbCanvas.addEventListener('mouseup',   () => { kbIsTuning=false; kbTunePitch=-1; });
+kbCanvas.addEventListener('mouseup', () => {
+  stopTuneOsc();
+  kbIsTuning=false; kbTunePitch=-1;
+});
 kbCanvas.addEventListener('mouseleave',() => {
+  stopTuneOsc();
   kbIsTuning=false; kbTunePitch=-1; kbHoverBorderPitch=-1;
   kbCanvas.style.cursor='default'; drawKeyboard();
 });
@@ -818,7 +861,8 @@ document.getElementById('btn-done-ok').addEventListener('click',()=>{
 // 起動
 // ============================================================
 window.addEventListener('resize', resizeCanvases);
-resizeCanvases();
+// レイアウト確定後に実行
+requestAnimationFrame(resizeCanvases);
 </script>
 </body>
 </html>
