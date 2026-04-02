@@ -156,17 +156,13 @@ body {
   <span class="t-lbl">BPM</span>
   <span style="color:#e0e0e0;font-size:15px;font-weight:bold;padding:0 4px;">90</span>
   <div class="vsep"></div>
-  <span class="t-lbl">音符の長さ</span>
-  <select id="len-sel">
-    <option value="4">全音符</option>
-    <option value="2">2分音符</option>
+  <span class="t-lbl">音符の長さ: 4分音符</span>
+  <select id="len-sel" style="display:none;">
     <option value="1" selected>4分音符</option>
-    <option value="0.5">8分音符</option>
-    <option value="0.25">16分音符</option>
   </select>
   <div class="vsep"></div>
   <button id="btn-submit">💾 データ保存</button>
-  <span id="status-msg">スペース:再生/停止 | 鍵盤境界ドラッグ:チューニング(±200¢) | 境界ダブルクリック:リセット | ノート右端ドラッグ:長さ変更 | 右クリック:削除</span>
+  <span id="status-msg">スペース:再生/停止 | 鍵盤の下の線ドラッグ:チューニング(±200¢) | 下の線ダブルクリック:リセット | 右クリック:削除</span>
 </div>
 
 <script>
@@ -196,8 +192,11 @@ async function supabaseInsert(table, record) {
 // 定数
 // ============================================================
 const TOTAL_NOTES  = 8;
-const NOTE_NAMES   = ["C","D","E","F","G","A","B","C"];
-const DIATONIC_ST  = [0, 2, 4, 5, 7, 9, 11, 12];
+const NOTE_NAMES   = ["1","2","3","4","5","6","7","1"];
+// 7平均律: 1オクターブ(1200¢)を7等分 → 1ステップ = 1200/7 ≈ 171.43¢
+// pitchOffsets による微調整は引き続き有効
+const EDO7_STEP_CENTS = 1200 / 7;           // ≈ 171.4286¢
+const EDO7_SEMITONES  = Array.from({length: 8}, (_, i) => i * EDO7_STEP_CENTS / 100);
 const BASE_HZ      = 261.62;
 const MAX_CENTS    = 200.0;
 
@@ -290,7 +289,8 @@ function yToRow(y) {
 }
 
 function pitchToHz(pitch, cents=0) {
-  return BASE_HZ * Math.pow(2, (DIATONIC_ST[pitch] + cents / 100) / 12);
+  // 7平均律基準音 + pitchOffsets による微調整（¢）
+  return BASE_HZ * Math.pow(2, (EDO7_SEMITONES[pitch] + cents / 100) / 12);
 }
 
 function centsToFill(cents, alpha=220) {
@@ -523,10 +523,12 @@ function drawKeyboard() {
     }
 
     const isHot = (p === kbHoverBorderPitch || (kbIsTuning && p === kbTunePitch));
+    // 上の線（常時）
+    ctx.strokeStyle = C.keyBorder; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,rt); ctx.lineTo(KB_W-2,rt); ctx.stroke();
+    // 下の線（ホット時は強調）
     ctx.strokeStyle = isHot ? (cents>=0 ? C.tunePos : C.tuneNeg) : C.keyBorder;
     ctx.lineWidth   = isHot ? 2 : 1;
-    ctx.beginPath(); ctx.moveTo(0,rt); ctx.lineTo(KB_W-2,rt); ctx.stroke();
-    ctx.strokeStyle = C.keyBorder; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0,rt+rh-1); ctx.lineTo(KB_W-2,rt+rh-1); ctx.stroke();
 
     if (rh >= 14) {
@@ -614,10 +616,14 @@ function drawAll() { recomputeRows(); drawRuler(); drawKeyboard(); drawGrid(); }
 let kbIsTuning=false, kbTunePitch=-1, kbTuneStartY=0, kbTuneStartCents=0, kbHoverBorderPitch=-1;
 let sliderOpsCount=0;
 
+// 各行の「下の線」でヒット判定
+// rowTops[i]+rowHeights[i] が行iの底辺 = ピッチ(TOTAL_NOTES-1-i)の下線
+// 行iの底辺をドラッグ → ピッチ(TOTAL_NOTES-1-i)のチューニング
 function borderPitchAt(y) {
-  for (let i=0;i<TOTAL_NOTES;i++)
-    if (Math.abs(y-rowTops[i])<=BORDER_HOT) return TOTAL_NOTES-1-i;
-  if (Math.abs(y-totalHeight())<=BORDER_HOT) return 0;
+  for (let i = 0; i < TOTAL_NOTES; i++) {
+    const bottom = rowTops[i] + rowHeights[i];
+    if (Math.abs(y - bottom) <= BORDER_HOT) return TOTAL_NOTES - 1 - i;
+  }
   return -1;
 }
 
@@ -686,25 +692,20 @@ function resizeNoteAt(px,py) {
 
 gridCanvas.addEventListener('mousemove', e => {
   e.preventDefault(); const px=e.offsetX,py=e.offsetY;
-  if (dragState.mode==='resize') {
-    dragState.resizeNote.duration=Math.max(1/SUBDIVISIONS,snapBeat(dragState.resizeStartDur+(px-dragState.resizeStartX)/BEAT_W));
-    drawGrid(); return;
-  }
+  // resizeモード無効（4分音符固定のため）
   if (dragState.mode==='placing'&&dragState.ghost) {
-    dragState.ghost.duration=Math.max(1/SUBDIVISIONS,snapBeat(parseFloat(document.getElementById('len-sel').value)+(px-dragState.startX)/BEAT_W));
     drawGrid(); return;
   }
-  gridCanvas.style.cursor=resizeNoteAt(px,py)?'ew-resize':'crosshair';
+  gridCanvas.style.cursor='crosshair';
 });
 gridCanvas.addEventListener('mousedown', e => {
   e.preventDefault(); const px=e.offsetX,py=e.offsetY;
   if (e.button===2) { const t=noteAtPixel(px,py); if(t){notes.splice(notes.indexOf(t),1);drawGrid();} return; }
   if (e.button!==0) return;
-  const rn=resizeNoteAt(px,py);
-  if (rn) { dragState.mode='resize';dragState.resizeNote=rn;dragState.resizeStartDur=rn.duration;dragState.resizeStartX=px; return; }
+  // resize無効（4分音符固定）
   if (noteAtPixel(px,py)) return;
   const row=yToRow(py); if(row<0)return;
-  const pitch=TOTAL_NOTES-1-row, beat=snapBeat(px/BEAT_W), len=parseFloat(document.getElementById('len-sel').value);
+  const pitch=TOTAL_NOTES-1-row, beat=snapBeat(px/BEAT_W), len=1; // 4分音符固定
   if (notes.find(n=>n.pitch===pitch&&n.start<=beat&&beat<n.start+n.duration)) return;
   dragState.mode='placing'; dragState.startX=px; dragState.ghost=newNote(pitch,beat,len); drawGrid();
 });
