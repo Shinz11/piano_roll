@@ -192,12 +192,12 @@ async function supabaseInsert(table, record) {
 // 定数
 // ============================================================
 const TOTAL_NOTES  = 8;
-const NOTE_NAMES   = ["1","2","3","4","5","6","7","1'"];
+const NOTE_NAMES   = ["C","D","E","F","G","A","B","C"];
 // 7平均律: 1オクターブ(1200¢)を7等分 → 1ステップ = 1200/7 ≈ 171.43¢
 // pitchOffsets による微調整は引き続き有効
 const EDO7_STEP_CENTS = 1200 / 7;           // ≈ 171.4286¢
 const EDO7_SEMITONES  = Array.from({length: 8}, (_, i) => i * EDO7_STEP_CENTS / 100);
-const BASE_HZ      = 261.62;
+const BASE_HZ      = 130.81;
 const MAX_CENTS    = 200.0;
 
 // Cのピッチインデックス（下=0, 上=7）
@@ -251,33 +251,65 @@ function syncCPitches(changedPitch) {
 }
 
 function recomputeRows() {
-  const nh    = getNH();
-  const base  = pitchOffsets.map(c => Math.max(4, nh * (1 - Math.abs(c) / MAX_CENTS)));
-  const extra = new Array(TOTAL_NOTES).fill(0);
-  for (let p = 0; p < TOTAL_NOTES; p++) {
-    const shrink   = nh - base[p];
-    if (shrink < 0.5) continue;
-    const neighbor = pitchOffsets[p] > 0 ? p + 1 : p - 1;
-    if (neighbor >= 0 && neighbor < TOTAL_NOTES) extra[neighbor] += shrink;
+  // -------------------------------------------------------
+  // 設計:
+  //   cents > 0（音を上げた）→ 行が上方向に「伸びる」（高さ増）
+  //                            上の隣行がその分「縮む」
+  //   cents < 0（音を下げた）→ 行が下方向に「縮む」（高さ減）
+  //                            下の隣行がその分「縮む」
+  //
+  // 行インデックス i : 上から順（i=0 が最高音 pitch=7）
+  // ピッチ p = TOTAL_NOTES - 1 - i
+  // -------------------------------------------------------
+  const nh  = getNH();
+  const MAX_DELTA = nh * 0.45;   // 最大伸縮量（行高さの45%）
+
+  // step1: 各行の「自然高さ」と「伸縮デルタ」を計算
+  const delta = new Array(TOTAL_NOTES).fill(0); // 正=伸びる, 負=縮む
+  for (let i = 0; i < TOTAL_NOTES; i++) {
+    const p = TOTAL_NOTES - 1 - i;
+    const c = pitchOffsets[p];
+    delta[i] = (c / MAX_CENTS) * MAX_DELTA;  // cents>0 → 正（伸びる）
   }
+
+  // step2: 行高さを計算
+  //   自分のdelta分だけ自分の高さが変化
+  //   その影響を上/下の隣行に転嫁
+  const h = new Array(TOTAL_NOTES).fill(nh);
+  const borrow = new Array(TOTAL_NOTES).fill(0); // 隣から借りる/貸す量
+  for (let i = 0; i < TOTAL_NOTES; i++) {
+    const d = delta[i];
+    if (d > 0) {
+      // 音を上げた → 上方向に伸びる → 上の隣行(i-1)から借りる
+      h[i] += d;
+      if (i - 1 >= 0) h[i-1] -= d;
+    } else if (d < 0) {
+      // 音を下げた → 下方向に縮む → 下の隣行(i+1)へ押し出す（その行も縮む）
+      h[i] += d; // h[i]が減る（d<0なのでマイナス）
+      // 下の隣行は押し出しで縮むのではなく位置がずれるだけ（高さはそのまま）
+    }
+  }
+
+  // step3: 最小高さを保証し、合計を totalHeight に合わせる
+  for (let i = 0; i < TOTAL_NOTES; i++) h[i] = Math.max(6, h[i]);
+  const total = nh * TOTAL_NOTES;
+  const sum   = h.reduce((a, b) => a + b, 0);
+  // 最も高い行に差分を加減して合計を合わせる
+  let bi = 0;
+  for (let i = 1; i < TOTAL_NOTES; i++) if (h[i] > h[bi]) bi = i;
+  h[bi] += total - sum;
+  h[bi] = Math.max(6, h[bi]);
+
+  // step4: rowHeights / rowTops を確定
   let acc = 0;
   for (let i = 0; i < TOTAL_NOTES; i++) {
-    const p      = TOTAL_NOTES - 1 - i;
-    rowHeights[i] = Math.max(4, Math.round(base[p] + extra[p]));
+    rowHeights[i] = Math.round(h[i]);
     rowTops[i]    = acc;
     acc          += rowHeights[i];
   }
-  const total = nh * TOTAL_NOTES;
-  const sum   = rowTops[TOTAL_NOTES-1] + rowHeights[TOTAL_NOTES-1];
-  const diff  = total - sum;
-  if (diff !== 0) {
-    let bi = 0;
-    for (let i = 1; i < TOTAL_NOTES; i++)
-      if (rowHeights[i] > rowHeights[bi]) bi = i;
-    rowHeights[bi] += diff;
-    acc = 0;
-    for (let i = 0; i < TOTAL_NOTES; i++) { rowTops[i] = acc; acc += rowHeights[i]; }
-  }
+  // 端数を最後の行で吸収
+  const finalSum = rowTops[TOTAL_NOTES-1] + rowHeights[TOTAL_NOTES-1];
+  rowHeights[TOTAL_NOTES-1] += total - finalSum;
 }
 
 function totalHeight() { return getNH() * TOTAL_NOTES; }
@@ -306,10 +338,7 @@ function noteRect(note) {
   const row = TOTAL_NOTES - 1 - p;
   const rh  = rowHeights[row];
   const rt  = rowTops[row];
-  const cv  = pitchOffsets[p];
-  const h   = Math.max(2, rh - 2);
-  const y   = cv >= 0 ? rt + 1 : rt + rh - 1 - h;
-  return { x: note.start * BEAT_W, y, w: Math.max(2, note.duration * BEAT_W - 2), h };
+  return { x: note.start * BEAT_W, y: rt + 1, w: Math.max(2, note.duration * BEAT_W - 2), h: Math.max(2, rh - 2) };
 }
 
 // ============================================================
@@ -487,10 +516,10 @@ function resizeCanvases() {
   const mainH = rowH * TOTAL_NOTES;
   window._nh  = rowH;
 
-  // 4小節（16拍）がスクロールなしでぴったり収まるよう BEAT_W を計算
-  BEAT_W = Math.floor(areaW / TOTAL_BEATS);
+  // グリッド幅 = grid-wrapの実幅そのまま（端数ゼロ）
+  GRID_W = areaW;
+  BEAT_W = GRID_W / TOTAL_BEATS;   // floatのまま保持
   CELL_W = BEAT_W / SUBDIVISIONS;
-  GRID_W = BEAT_W * TOTAL_BEATS;
 
   const corner = document.getElementById('ruler-corner');
   corner.style.width  = KB_W + 'px';
@@ -548,11 +577,12 @@ function drawKeyboard() {
     ctx.fillRect(0, rt, KB_W-2, rh);
 
     if (Math.abs(cents) > 0.5) {
-      const bh  = Math.max(2, (Math.abs(cents)/MAX_CENTS) * rh / 2);
-      const mid = rt + rh / 2;
+      // cents>0（上げた）→ 行が上に伸びているので上端寄りにバー
+      // cents<0（下げた）→ 行が下に縮んでいるので下端寄りにバー
+      const bh = Math.max(2, (Math.abs(cents)/MAX_CENTS) * rh * 0.4);
       ctx.fillStyle = cents > 0 ? C.tunePos : C.tuneNeg;
-      ctx.globalAlpha = 0.85;
-      ctx.fillRect(0, cents > 0 ? mid-bh : mid, 5, bh);
+      ctx.globalAlpha = 0.9;
+      ctx.fillRect(0, cents > 0 ? rt : rt + rh - bh, 5, bh);
       ctx.globalAlpha = 1;
     }
 
