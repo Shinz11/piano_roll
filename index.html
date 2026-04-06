@@ -191,18 +191,18 @@ async function supabaseInsert(table, record) {
 // ============================================================
 // 定数
 // ============================================================
-const TOTAL_NOTES  = 9;
-const NOTE_NAMES   = ["1","2","3","4","5","6","7","8","1'"];
+const TOTAL_NOTES  = 8;
+const NOTE_NAMES   = ["1","2","3","4","5","6","7","1'"];
 // 7平均律: 1オクターブ(1200¢)を7等分 → 1ステップ = 1200/7 ≈ 171.43¢
 // pitchOffsets による微調整は引き続き有効
-const EDO7_STEP_CENTS = 1200 / 8;           // ≈ 171.4286¢
-const EDO7_SEMITONES  = Array.from({length: 9}, (_, i) => i * EDO7_STEP_CENTS / 100);
+const EDO7_STEP_CENTS = 1200 / 7;           // ≈ 171.4286¢
+const EDO7_SEMITONES  = Array.from({length: 8}, (_, i) => i * EDO7_STEP_CENTS / 100);
 const BASE_HZ      = 261.62;
 const MAX_CENTS    = 200.0;
 
 // Cのピッチインデックス（下=0, 上=7）
 const C_LOW  = 0;
-const C_HIGH = 8;
+const C_HIGH = 7;
 
 const NOTE_H       = 90;
 const SUBDIVISIONS = 4;
@@ -372,7 +372,7 @@ function playTone(hz, durationSec, velocity=100) {
   gain.gain.linearRampToValueAtTime(0, now + durationSec);
   gain.connect(masterGain);
   const osc  = audioCtx.createOscillator();
-  osc.type   = 'sine';
+  osc.type   = 'triangle';
   osc.frequency.value = hz;
   osc.connect(gain);
   osc.start(now); osc.stop(now + durationSec);
@@ -388,7 +388,7 @@ function startTuneOsc(hz) {
   tuneGain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.02);
   tuneGain.connect(masterGain);
   tuneOsc = audioCtx.createOscillator();
-  tuneOsc.type = 'sine';
+  tuneOsc.type = 'triangle';
   tuneOsc.frequency.value = hz;
   tuneOsc.connect(tuneGain);
   tuneOsc.start();
