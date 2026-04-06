@@ -95,32 +95,34 @@ body {
       <input type="text" id="input-uid" placeholder="例: オオタニ" autocomplete="off">
     </div>
     <div>
-      <label class="t-lbl">音楽経験の有無</label>
-      <div style="display:flex;gap:24px;margin-top:6px;">
-        <label style="display:flex;align-items:center;gap:8px;color:#e0e0e0;font-size:14px;cursor:pointer;">
-          <input type="radio" name="music-exp" id="exp-no" value="none" checked
-            style="width:16px;height:16px;accent-color:#00e5ff;"> なし
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;color:#e0e0e0;font-size:14px;cursor:pointer;">
-          <input type="radio" name="music-exp" id="exp-yes" value="yes"
-            style="width:16px;height:16px;accent-color:#00e5ff;"> あり
-        </label>
-      </div>
-    </div>
-    <div id="exp-detail-wrap" style="display:none;">
-      <label class="t-lbl">経験の内容と期間（自由記述）</label>
-      <textarea id="input-exp-detail"
-        placeholder="例: ピアノを10年、ギターを3年など"
-        style="background:#1a1a2e;color:#e0e0e0;border:1px solid #4a4a6a;border-radius:4px;
-               font-family:inherit;font-size:14px;padding:8px 10px;width:100%;
-               min-height:70px;resize:vertical;line-height:1.5;margin-top:4px;"></textarea>
-    </div>
-    <div>
       <label class="t-lbl">実験種類</label>
       <select id="input-task">
         <option value="scale">1. 音階制作</option>
         <option value="melody">2. メロディ制作</option>
       </select>
+    </div>
+    <div id="music-exp-block">
+      <div>
+        <label class="t-lbl">音楽経験の有無</label>
+        <div style="display:flex;gap:24px;margin-top:6px;">
+          <label style="display:flex;align-items:center;gap:8px;color:#e0e0e0;font-size:14px;cursor:pointer;">
+            <input type="radio" name="music-exp" id="exp-no" value="none" checked
+              style="width:16px;height:16px;accent-color:#00e5ff;"> なし
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;color:#e0e0e0;font-size:14px;cursor:pointer;">
+            <input type="radio" name="music-exp" id="exp-yes" value="yes"
+              style="width:16px;height:16px;accent-color:#00e5ff;"> あり
+          </label>
+        </div>
+      </div>
+      <div id="exp-detail-wrap" style="display:none;margin-top:10px;">
+        <label class="t-lbl">経験の内容と期間（自由記述）</label>
+        <textarea id="input-exp-detail"
+          placeholder="例: ピアノを10年、ギターを3年など"
+          style="background:#1a1a2e;color:#e0e0e0;border:1px solid #4a4a6a;border-radius:4px;
+                 font-family:inherit;font-size:14px;padding:8px 10px;width:100%;
+                 min-height:70px;resize:vertical;line-height:1.5;margin-top:4px;"></textarea>
+      </div>
     </div>
     <button class="modal-ok" id="btn-login-ok">開始</button>
   </div>
@@ -746,7 +748,7 @@ kbCanvas.addEventListener('dblclick', e => {
 // ============================================================
 const dragState={mode:null,ghost:null,startX:0,resizeNote:null,resizeStartDur:0,resizeStartX:0};
 
-function snapBeat(b) { const u=1/SUBDIVISIONS; return Math.round(b/u)*u; }
+function snapBeat(b) { return Math.round(b); } // 拍頭（整数）のみ
 
 function noteAtPixel(px,py) {
   for (let i=notes.length-1;i>=0;i--) {
@@ -813,8 +815,15 @@ document.addEventListener('keydown',e=>{
 function updateStatus(msg){document.getElementById('status-msg').textContent=msg;}
 
 // ============================================================
-// 音楽経験ラジオボタン
+// 音楽経験ラジオボタン & 実験種類連動
 // ============================================================
+function updateMusicExpVisibility() {
+  const isMelody = document.getElementById('input-task').value === 'melody';
+  document.getElementById('music-exp-block').style.display = isMelody ? 'none' : '';
+}
+document.getElementById('input-task').addEventListener('change', updateMusicExpVisibility);
+updateMusicExpVisibility(); // 初期状態を反映
+
 document.querySelectorAll('input[name="music-exp"]').forEach(r=>{
   r.addEventListener('change',()=>{
     const wrap=document.getElementById('exp-detail-wrap');
@@ -833,10 +842,14 @@ let sessionStartTime=Date.now();
 document.getElementById('btn-login-ok').addEventListener('click',()=>{
   const uid=document.getElementById('input-uid').value.trim();
   if(!uid){alert('ユーザーIDを入力してください');return;}
-  userId         = uid;
-  taskType       = document.getElementById('input-task').value;
-  musicExp       = document.querySelector('input[name="music-exp"]:checked').value;
-  musicExpDetail = musicExp==='yes'?document.getElementById('input-exp-detail').value.trim():'';
+  userId   = uid;
+  taskType = document.getElementById('input-task').value;
+  if (taskType === 'melody') {
+    musicExp = 'none'; musicExpDetail = '';
+  } else {
+    musicExp       = document.querySelector('input[name="music-exp"]:checked').value;
+    musicExpDetail = musicExp==='yes'?document.getElementById('input-exp-detail').value.trim():'';
+  }
   sessionStartTime=Date.now();
   document.getElementById('modal-login').classList.add('hidden');
   updateStatus(`ユーザー: ${userId} | タスク: ${taskType} | スペース:再生/停止`);
