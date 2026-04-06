@@ -194,7 +194,7 @@ async function supabaseInsert(table, record) {
 // 定数
 // ============================================================
 const TOTAL_NOTES  = 8;
-const NOTE_NAMES   = ["1","2","3","4","5","6","7","1'"];
+const NOTE_NAMES   = ["1","2","3","4","5","6","7","1"];
 // 7平均律: 1オクターブ(1200¢)を7等分 → 1ステップ = 1200/7 ≈ 171.43¢
 // pitchOffsets による微調整は引き続き有効
 const EDO7_STEP_CENTS = 1200 / 7;           // ≈ 171.4286¢
@@ -347,18 +347,14 @@ function noteRect(note) {
 // Web Audio（録音対応）
 // ============================================================
 let audioCtx        = null;
-let recDestNode     = null;   // MediaStreamAudioDestinationNode（録音専用）
 let masterGain      = null;   // 全音声をまとめるGainノード
 
 function ensureAudio() {
   if (!audioCtx) {
-    audioCtx    = new (window.AudioContext || window.webkitAudioContext)();
-    masterGain  = audioCtx.createGain();
+    audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
     masterGain.gain.value = 1.0;
     masterGain.connect(audioCtx.destination);
-    // 録音用ノード（常時接続、録音時だけ MediaRecorder を動かす）
-    recDestNode = audioCtx.createMediaStreamDestination();
-    masterGain.connect(recDestNode);
   }
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
@@ -409,47 +405,108 @@ function stopTuneOsc() {
 }
 
 // ============================================================
-// 録音機能
+// 録音機能（WAV出力）
+// PCMサンプルを ScriptProcessorNode で収集し、停止時に WAV 化
 // ============================================================
-let mediaRecorder   = null;
-let recordedChunks  = [];
 let isRecording     = false;
+let recScriptNode   = null;   // ScriptProcessorNode
+let recSamples      = [];     // Float32Array を貯める配列
+let recSampleRate   = 44100;
 
 function startRecording() {
   ensureAudio();
-  recordedChunks = [];
-  const stream   = recDestNode.stream;
-  // サポートされている形式を自動選択
-  const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg'].find(
-    t => MediaRecorder.isTypeSupported(t)
-  ) || '';
-  mediaRecorder  = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    const ext  = (mediaRecorder.mimeType || '').includes('ogg') ? 'ogg' : 'webm';
-    a.href     = url;
-    a.download = `pianoroll_${Date.now()}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    updateStatus(`録音完了 — ファイルをダウンロードしました`);
+  recSamples    = [];
+  recSampleRate = audioCtx.sampleRate;
+
+  // ScriptProcessorNode（バッファ4096サンプル、入力1ch、出力1ch）
+  recScriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+  recScriptNode.onaudioprocess = ev => {
+    if (!isRecording) return;
+    // Float32Array をコピーして蓄積（元バッファは上書きされるため）
+    recSamples.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
   };
-  mediaRecorder.start();
+  // masterGain → recScriptNode → audioCtx.destination（無音でOK）
+  masterGain.connect(recScriptNode);
+  recScriptNode.connect(audioCtx.destination);
+
   isRecording = true;
-  const btn   = document.getElementById('btn-record');
+  const btn = document.getElementById('btn-record');
   btn.textContent = '⏹ 録音停止';
   btn.classList.add('recording');
   updateStatus('🔴 録音中… 停止するには「録音停止」ボタンを押してください');
 }
 
 function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (!isRecording) return;
   isRecording = false;
-  const btn   = document.getElementById('btn-record');
+
+  // ノードを切り離す
+  if (recScriptNode) {
+    try { masterGain.disconnect(recScriptNode); } catch(e) {}
+    try { recScriptNode.disconnect(); } catch(e) {}
+    recScriptNode = null;
+  }
+
+  const btn = document.getElementById('btn-record');
   btn.textContent = '⏺ 録音';
   btn.classList.remove('recording');
+
+  // サンプルが空なら終了
+  if (recSamples.length === 0) { updateStatus('録音データがありません'); return; }
+
+  // PCM を結合
+  const totalLen = recSamples.reduce((s, b) => s + b.length, 0);
+  const pcm      = new Float32Array(totalLen);
+  let offset = 0;
+  for (const buf of recSamples) { pcm.set(buf, offset); offset += buf.length; }
+
+  // WAV バイナリ生成
+  const wav = encodeWAV(pcm, recSampleRate);
+  const blob = new Blob([wav], { type: 'audio/wav' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `pianoroll_${Date.now()}.wav`;
+  a.click();
+  URL.revokeObjectURL(url);
+  updateStatus('録音完了 — WAVファイルをダウンロードしました');
+}
+
+/** Float32Array の PCM データを WAV ArrayBuffer に変換 */
+function encodeWAV(samples, sampleRate) {
+  const numCh     = 1;
+  const bitsPerSample = 16;
+  const byteRate  = sampleRate * numCh * bitsPerSample / 8;
+  const blockAlign= numCh * bitsPerSample / 8;
+  const dataLen   = samples.length * blockAlign;
+  const buf       = new ArrayBuffer(44 + dataLen);
+  const view      = new DataView(buf);
+
+  function writeStr(off, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+  }
+  writeStr(0,  'RIFF');
+  view.setUint32(4,  36 + dataLen, true);
+  writeStr(8,  'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);           // chunk size
+  view.setUint16(20, 1,  true);           // PCM
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataLen, true);
+
+  // Float32 → Int16 変換
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    off += 2;
+  }
+  return buf;
 }
 
 document.getElementById('btn-record').addEventListener('click', () => {
