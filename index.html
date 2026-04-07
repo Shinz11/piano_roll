@@ -194,12 +194,12 @@ async function supabaseInsert(table, record) {
 // 定数
 // ============================================================
 const TOTAL_NOTES  = 8;
-const NOTE_NAMES   = ["1","2","3","4","5","6","7","1'"];
+const NOTE_NAMES   = ["C","D","E","F","G","A","B","C"];
 // 7平均律: 1オクターブ(1200¢)を7等分 → 1ステップ = 1200/7 ≈ 171.43¢
 // pitchOffsets による微調整は引き続き有効
 const EDO7_STEP_CENTS = 1200 / 7;           // ≈ 171.4286¢
 const EDO7_SEMITONES  = Array.from({length: 8}, (_, i) => i * EDO7_STEP_CENTS / 100);
-const BASE_HZ      = 261.62;
+const BASE_HZ      = 130.81;
 const MAX_CENTS    = 200.0;
 
 // Cのピッチインデックス（下=0, 上=7）
@@ -370,7 +370,7 @@ function playTone(hz, durationSec, velocity=100) {
   gain.gain.linearRampToValueAtTime(0, now + durationSec);
   gain.connect(masterGain);
   const osc  = audioCtx.createOscillator();
-  osc.type   = 'triangle';
+  osc.type   = 'sine';
   osc.frequency.value = hz;
   osc.connect(gain);
   osc.start(now); osc.stop(now + durationSec);
@@ -386,7 +386,7 @@ function startTuneOsc(hz) {
   tuneGain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.02);
   tuneGain.connect(masterGain);
   tuneOsc = audioCtx.createOscillator();
-  tuneOsc.type = 'triangle';
+  tuneOsc.type = 'sine';
   tuneOsc.frequency.value = hz;
   tuneOsc.connect(tuneGain);
   tuneOsc.start();
@@ -454,22 +454,72 @@ function stopRecording() {
   // サンプルが空なら終了
   if (recSamples.length === 0) { updateStatus('録音データがありません'); return; }
 
-  // PCM を結合
+  // --- ① 7EDO録音WAV（リアルタイム収集済みPCM）---
   const totalLen = recSamples.reduce((s, b) => s + b.length, 0);
   const pcm      = new Float32Array(totalLen);
   let offset = 0;
   for (const buf of recSamples) { pcm.set(buf, offset); offset += buf.length; }
 
-  // WAV バイナリ生成
-  const wav = encodeWAV(pcm, recSampleRate);
-  const blob = new Blob([wav], { type: 'audio/wav' });
+  const ts   = Date.now();
+  downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_7edo_${ts}.wav`);
+
+  // --- ② 12平均律WAV（OfflineAudioContextでオフラインレンダリング）---
+  renderTwelveTETWAV(ts).then(wavBuf => {
+    downloadWAV(wavBuf, `pianoroll_12eq_${ts}.wav`);
+    updateStatus('録音完了 — 7EDO版・12平均律版の2ファイルをダウンロードしました');
+  }).catch(err => {
+    console.error('12平均律レンダリングエラー:', err);
+    updateStatus('録音完了 — 7EDO版をダウンロードしました（12平均律版の生成に失敗）');
+  });
+}
+
+/** WAV ArrayBuffer をファイルとしてダウンロード */
+function downloadWAV(wavBuf, filename) {
+  const blob = new Blob([wavBuf], { type: 'audio/wav' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `pianoroll_${Date.now()}.wav`;
-  a.click();
+  a.href     = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
-  updateStatus('録音完了 — WAVファイルをダウンロードしました');
+}
+
+/**
+ * 現在の notes を12平均律のHz でオフラインレンダリングして WAV ArrayBuffer を返す
+ * ダイアトニック音名→12TET半音数のマッピング（C3基準: C=130.81Hz）
+ */
+const DIATONIC_SEMITONES_12 = [0, 2, 4, 5, 7, 9, 11, 12]; // C D E F G A B C
+async function renderTwelveTETWAV(ts) {
+  const bpm      = getBpm();
+  const bps      = bpm / 60;
+  // 総尺 = 最後のノートの終端 + 1秒の余韻
+  const lastEnd  = notes.reduce((m, n) => Math.max(m, n.start + n.duration), 0);
+  const totalSec = lastEnd / bps + 1.0;
+  const sr       = recSampleRate;
+
+  const offCtx   = new OfflineAudioContext(1, Math.ceil(totalSec * sr), sr);
+
+  for (const n of notes) {
+    const hz12 = BASE_HZ * Math.pow(2, DIATONIC_SEMITONES_12[n.pitch] / 12);
+    const startSec = n.start / bps;
+    const durSec   = (n.duration / bps) * 0.92;
+    const vol      = (n.velocity / 127) * 0.28;
+
+    const gain = offCtx.createGain();
+    gain.gain.setValueAtTime(0, startSec);
+    gain.gain.linearRampToValueAtTime(vol, startSec + 0.01);
+    gain.gain.setValueAtTime(vol, startSec + durSec - 0.06);
+    gain.gain.linearRampToValueAtTime(0, startSec + durSec);
+    gain.connect(offCtx.destination);
+
+    const osc = offCtx.createOscillator();
+    osc.type  = 'sine';
+    osc.frequency.value = hz12;
+    osc.connect(gain);
+    osc.start(startSec);
+    osc.stop(startSec + durSec);
+  }
+
+  const rendered = await offCtx.startRendering();
+  return encodeWAV(rendered.getChannelData(0), sr);
 }
 
 /** Float32Array の PCM データを WAV ArrayBuffer に変換 */
