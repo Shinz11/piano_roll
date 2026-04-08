@@ -164,6 +164,12 @@ body {
   </select>
   <div class="vsep"></div>
   <button id="btn-submit">💾 データ保存</button>
+  <button id="btn-play12"
+    style="display:none;background:#1a3a5c;color:#00e5ff;border:1px solid #00e5ff;border-radius:6px;
+           font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer;
+           padding:6px 14px;height:40px;white-space:nowrap;">
+    🎵 12平均律で聴く ▶
+  </button>
   <span id="status-msg">スペース:再生/停止 | 鍵盤の下の線ドラッグ:チューニング(±200¢) | 下の線ダブルクリック:リセット | 右クリック:削除</span>
 </div>
 
@@ -454,23 +460,15 @@ function stopRecording() {
   // サンプルが空なら終了
   if (recSamples.length === 0) { updateStatus('録音データがありません'); return; }
 
-  // --- ① 7EDO録音WAV（リアルタイム収集済みPCM）---
+  // 7EDO録音WAV（リアルタイム収集済みPCM）をダウンロード
   const totalLen = recSamples.reduce((s, b) => s + b.length, 0);
   const pcm      = new Float32Array(totalLen);
   let offset = 0;
   for (const buf of recSamples) { pcm.set(buf, offset); offset += buf.length; }
 
-  const ts   = Date.now();
-  downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_${ts}.wav`);
-
-  // --- ② 12平均律WAV（OfflineAudioContextでオフラインレンダリング）---
-  renderTwelveTETWAV(ts).then(wavBuf => {
-    downloadWAV(wavBuf, `pianoroll_12eq_${ts}.wav`);
-    updateStatus('録音完了 — 7EDO版・12平均律版の2ファイルをダウンロードしました');
-  }).catch(err => {
-    console.error('12平均律レンダリングエラー:', err);
-    updateStatus('録音完了 — 7EDO版をダウンロードしました（12平均律版の生成に失敗）');
-  });
+  const ts = Date.now();
+  downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_7edo_${ts}.wav`);
+  updateStatus('録音完了 — WAVファイルをダウンロードしました');
 }
 
 /** WAV ArrayBuffer をファイルとしてダウンロード */
@@ -482,45 +480,8 @@ function downloadWAV(wavBuf, filename) {
   URL.revokeObjectURL(url);
 }
 
-/**
- * 現在の notes を12平均律のHz でオフラインレンダリングして WAV ArrayBuffer を返す
- * ダイアトニック音名→12TET半音数のマッピング（C3基準: C=130.81Hz）
- */
-const DIATONIC_SEMITONES_12 = [0, 2, 4, 5, 7, 9, 11, 12]; // C D E F G A B C
-async function renderTwelveTETWAV(ts) {
-  const bpm      = getBpm();
-  const bps      = bpm / 60;
-  // 総尺 = 最後のノートの終端 + 1秒の余韻
-  const lastEnd  = notes.reduce((m, n) => Math.max(m, n.start + n.duration), 0);
-  const totalSec = lastEnd / bps + 1.0;
-  const sr       = recSampleRate;
-
-  const offCtx   = new OfflineAudioContext(1, Math.ceil(totalSec * sr), sr);
-
-  for (const n of notes) {
-    const hz12 = BASE_HZ * Math.pow(2, DIATONIC_SEMITONES_12[n.pitch] / 12);
-    const startSec = n.start / bps;
-    const durSec   = (n.duration / bps) * 0.92;
-    const vol      = (n.velocity / 127) * 0.28;
-
-    const gain = offCtx.createGain();
-    gain.gain.setValueAtTime(0, startSec);
-    gain.gain.linearRampToValueAtTime(vol, startSec + 0.01);
-    gain.gain.setValueAtTime(vol, startSec + durSec - 0.06);
-    gain.gain.linearRampToValueAtTime(0, startSec + durSec);
-    gain.connect(offCtx.destination);
-
-    const osc = offCtx.createOscillator();
-    osc.type  = 'sine';
-    osc.frequency.value = hz12;
-    osc.connect(gain);
-    osc.start(startSec);
-    osc.stop(startSec + durSec);
-  }
-
-  const rendered = await offCtx.startRendering();
-  return encodeWAV(rendered.getChannelData(0), sr);
-}
+// 12平均律: ダイアトニック音名→半音数マッピング (C D E F G A B C)
+const DIATONIC_SEMITONES_12 = [0, 2, 4, 5, 7, 9, 11, 12];
 
 /** Float32Array の PCM データを WAV ArrayBuffer に変換 */
 function encodeWAV(samples, sampleRate) {
@@ -996,6 +957,8 @@ document.getElementById('btn-submit').addEventListener('click',async()=>{
     document.getElementById('modal-done-msg').textContent=
       `データを保存しました。ノート数: ${notes.length}件、制作時間: ${Math.round((Date.now()-sessionStartTime)/1000)}秒`;
     document.getElementById('modal-done').classList.remove('hidden');
+    // 12平均律試聴ボタンを表示
+    document.getElementById('btn-play12').style.display = 'inline-block';
     sliderOpsCount=0; sessionStartTime=Date.now();
   } catch(err) {
     alert(`送信エラー: ${err.message}`); console.error(err);
@@ -1004,7 +967,80 @@ document.getElementById('btn-submit').addEventListener('click',async()=>{
 });
 
 document.getElementById('btn-done-ok').addEventListener('click',()=>{
+  stop12Play();
   document.getElementById('modal-done').classList.add('hidden');
+});
+
+// ============================================================
+// 12平均律 試聴プレイヤー
+// ============================================================
+let play12Source = null;   // AudioBufferSourceNode
+let is12Playing  = false;
+
+async function start12Play() {
+  ensureAudio();
+  if (notes.length === 0) return;
+  const btn = document.getElementById('btn-play12');
+  btn.textContent = '⏳ 生成中…'; btn.disabled = true;
+
+  try {
+    const bpm = getBpm(), bps = bpm / 60;
+    const lastEnd  = notes.reduce((m, n) => Math.max(m, n.start + n.duration), 0);
+    const totalSec = lastEnd / bps + 1.0;
+    const sr       = audioCtx.sampleRate;
+
+    const offCtx = new OfflineAudioContext(1, Math.ceil(totalSec * sr), sr);
+    for (const n of notes) {
+      const hz12     = BASE_HZ * Math.pow(2, DIATONIC_SEMITONES_12[n.pitch] / 12);
+      const startSec = n.start / bps;
+      const durSec   = (n.duration / bps) * 0.92;
+      const vol      = (n.velocity / 127) * 0.28;
+
+      const gain = offCtx.createGain();
+      gain.gain.setValueAtTime(0, startSec);
+      gain.gain.linearRampToValueAtTime(vol, startSec + 0.01);
+      gain.gain.setValueAtTime(vol, startSec + durSec - 0.06);
+      gain.gain.linearRampToValueAtTime(0, startSec + durSec);
+      gain.connect(offCtx.destination);
+
+      const osc = offCtx.createOscillator();
+      osc.type  = 'sine';
+      osc.frequency.value = hz12;
+      osc.connect(gain);
+      osc.start(startSec); osc.stop(startSec + durSec);
+    }
+
+    const rendered = await offCtx.startRendering();
+
+    play12Source = audioCtx.createBufferSource();
+    play12Source.buffer = rendered;
+    play12Source.connect(audioCtx.destination);
+    play12Source.onended = () => {
+      is12Playing = false; play12Source = null;
+      btn.textContent = '🎵 12平均律で聴く ▶'; btn.disabled = false;
+    };
+    play12Source.start();
+    is12Playing = true;
+    btn.textContent = '■ 停止'; btn.disabled = false;
+  } catch(err) {
+    console.error('12平均律再生エラー:', err);
+    btn.textContent = '🎵 12平均律で聴く ▶'; btn.disabled = false;
+  }
+}
+
+function stop12Play() {
+  if (play12Source) {
+    try { play12Source.stop(); } catch(e) {}
+    play12Source = null;
+  }
+  is12Playing = false;
+  const btn = document.getElementById('btn-play12');
+  btn.textContent = '🎵 12平均律で聴く ▶'; btn.disabled = false;
+}
+
+document.getElementById('btn-play12').addEventListener('click', () => {
+  if (is12Playing) stop12Play();
+  else start12Play();
 });
 
 // ============================================================
