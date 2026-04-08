@@ -467,7 +467,7 @@ function stopRecording() {
   for (const buf of recSamples) { pcm.set(buf, offset); offset += buf.length; }
 
   const ts = Date.now();
-  downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_7edo_${ts}.wav`);
+  downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_${ts}.wav`);
   updateStatus('録音完了 — WAVファイルをダウンロードしました');
 }
 
