@@ -1004,7 +1004,7 @@ async function start12Play() {
       gain.connect(offCtx.destination);
 
       const osc = offCtx.createOscillator();
-      osc.type  = 'sine';
+      osc.type  = 'triangle';
       osc.frequency.value = hz12;
       osc.connect(gain);
       osc.start(startSec); osc.stop(startSec + durSec);
