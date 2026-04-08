@@ -138,7 +138,7 @@ body {
 </div>
 
 <!-- ピアノロール本体 -->
-<div id="piano-roll-area">
+<div id="piano-roll-area" style="position:relative;">
   <div id="ruler-row">
     <div id="ruler-corner"></div>
     <canvas id="ruler-canvas"></canvas>
@@ -146,6 +146,23 @@ body {
   <div id="main-row">
     <div id="keyboard-wrap"><canvas id="keyboard-canvas"></canvas></div>
     <div id="grid-wrap"><canvas id="grid-canvas"></canvas></div>
+  </div>
+
+  <!-- 課題パネル（メロディ制作時のみ表示） -->
+  <div id="task-panel" style="
+    display:none; position:absolute; right:22px; top:40px;
+    background:rgba(13,17,23,0.96); border:1px solid #4a4a6a;
+    border-radius:14px; padding:24px 30px; min-width:220px;
+    font-family:'Courier New',monospace; z-index:10;
+    box-shadow:0 8px 40px rgba(0,0,0,0.7);
+  ">
+    <div style="color:#b0b8c8;font-size:13px;font-weight:bold;margin-bottom:18px;letter-spacing:0.08em;">課題 — メロディの動き</div>
+    <div id="task-steps"></div>
+    <div style="color:#7a7a9a;font-size:12px;margin-top:18px;line-height:2.0;">
+      → : 同じ音を繰り返す<br>
+      ↑ : 上がる<br>
+      ↓ : 下がる
+    </div>
   </div>
 </div>
 
@@ -467,7 +484,7 @@ function stopRecording() {
   for (const buf of recSamples) { pcm.set(buf, offset); offset += buf.length; }
 
   const ts = Date.now();
-  downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_${ts}.wav`);
+  downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_7edo_${ts}.wav`);
   updateStatus('録音完了 — WAVファイルをダウンロードしました');
 }
 
@@ -907,6 +924,60 @@ document.querySelectorAll('input[name="music-exp"]').forEach(r=>{
 let userId='', taskType='', musicExp='none', musicExpDetail='';
 let sessionStartTime=Date.now();
 
+// ============================================================
+// メロディ課題パネル
+// ============================================================
+// 動き: ↑↓→↑↑↓↓  開始音: C (pitch=0)
+const MELODY_MOVES = ['start','↑','↓','→','↑','↑','↓','↓'];
+// Cから辿った音名シーケンス (pitch index 0=C,1=D,2=E…)
+const MELODY_PITCHES = [0, 1, 0, 0, 1, 2, 1, 0]; // C D C C D E D C
+
+function buildTaskPanel() {
+  const container = document.getElementById('task-steps');
+  container.innerHTML = '';
+  const arrowColor = { '↑':'#00e5ff', '↓':'#ff6e9c', '→':'#aaaaaa', 'start':'#2eb86a' };
+
+  MELODY_MOVES.forEach((move, i) => {
+    const pitch    = MELODY_PITCHES[i];
+    const noteName = NOTE_NAMES[pitch];
+    const isStart  = move === 'start';
+    const arrow    = isStart ? '●' : move;
+    const color    = arrowColor[move];
+    const beat     = i + 1;
+
+    const row = document.createElement('div');
+    row.style.cssText = `
+      display:flex; align-items:center; gap:12px;
+      padding:7px 0; border-bottom:1px solid #1e1e3a;
+    `;
+
+    // 拍番号 — オレンジで目立つように
+    const beatEl = document.createElement('span');
+    beatEl.textContent = beat;
+    beatEl.style.cssText = `
+      color:#f0a040; font-size:15px; font-weight:bold;
+      width:20px; text-align:center; flex-shrink:0;
+    `;
+
+    // 矢印
+    const arrowEl = document.createElement('span');
+    arrowEl.textContent = arrow;
+    arrowEl.style.cssText = `
+      color:${color}; font-size:30px;
+      width:32px; text-align:center; flex-shrink:0; line-height:1;
+    `;
+
+    // 音名
+    const nameEl = document.createElement('span');
+    nameEl.textContent = noteName;
+    nameEl.style.cssText = `color:${color}; font-size:18px; font-weight:bold;`;
+
+    row.appendChild(beatEl);
+    row.appendChild(arrowEl);
+    container.appendChild(row);
+  });
+}
+
 document.getElementById('btn-login-ok').addEventListener('click',()=>{
   const uid=document.getElementById('input-uid').value.trim();
   if(!uid){alert('ユーザーIDを入力してください');return;}
@@ -921,6 +992,15 @@ document.getElementById('btn-login-ok').addEventListener('click',()=>{
   sessionStartTime=Date.now();
   document.getElementById('modal-login').classList.add('hidden');
   updateStatus(`ユーザー: ${userId} | タスク: ${taskType} | スペース:再生/停止`);
+
+  // メロディ制作のとき課題パネルを表示
+  const panel = document.getElementById('task-panel');
+  if (taskType === 'melody') {
+    buildTaskPanel();
+    panel.style.display = 'block';
+  } else {
+    panel.style.display = 'none';
+  }
 });
 
 document.getElementById('btn-submit').addEventListener('click',async()=>{
