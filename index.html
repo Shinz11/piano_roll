@@ -160,8 +160,8 @@ body {
     <div id="task-steps"></div>
     <div style="color:#7a7a9a;font-size:12px;margin-top:18px;line-height:2.0;">
       → : 同じ音を繰り返す<br>
-      ↑ : 上がる<br>
-      ↓ : 下がる
+      ↑ : 1音上がる<br>
+      ↓ : 1音下がる
     </div>
   </div>
 </div>
@@ -765,6 +765,7 @@ function drawAll() { recomputeRows(); drawRuler(); drawKeyboard(); drawGrid(); }
 // 鍵盤マウス操作
 // ============================================================
 let kbIsTuning=false, kbTunePitch=-1, kbTuneStartY=0, kbTuneStartCents=0, kbHoverBorderPitch=-1;
+let kbHoverRowPitch = -1;  // 現在マウスが乗っている行のピッチ（矢印キー操作対象）
 let sliderOpsCount=0;
 
 // 各行の「下の線」でヒット判定
@@ -780,6 +781,10 @@ function borderPitchAt(y) {
 
 kbCanvas.addEventListener('mousemove', e => {
   const y=e.offsetY;
+  // ホバー中の行ピッチを常時追跡（矢印キー操作のため）
+  const hrow = yToRow(y);
+  kbHoverRowPitch = hrow >= 0 ? TOTAL_NOTES - 1 - hrow : -1;
+
   if (kbIsTuning&&kbTunePitch>=0) {
     const nc=Math.max(-MAX_CENTS,Math.min(MAX_CENTS,kbTuneStartCents+(kbTuneStartY-y)*getCentsPx()));
     pitchOffsets[kbTunePitch]=Math.round(nc);
@@ -815,7 +820,7 @@ kbCanvas.addEventListener('mouseup', () => {
 });
 kbCanvas.addEventListener('mouseleave',() => {
   stopTuneOsc();
-  kbIsTuning=false; kbTunePitch=-1; kbHoverBorderPitch=-1;
+  kbIsTuning=false; kbTunePitch=-1; kbHoverBorderPitch=-1; kbHoverRowPitch=-1;
   kbCanvas.style.cursor='default'; drawKeyboard();
 });
 kbCanvas.addEventListener('dblclick', e => {
@@ -895,6 +900,20 @@ document.getElementById('btn-stop').addEventListener('click',stopPlay);
 document.addEventListener('keydown',e=>{
   if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA')return;
   if(e.code==='Space'&&!e.repeat){e.preventDefault();isPlaying?stopPlay():startPlay();}
+
+  // 矢印キー: 鍵盤ホバー中のピッチを±1セント調整
+  if((e.code==='ArrowUp'||e.code==='ArrowDown')&&kbHoverRowPitch>=0){
+    e.preventDefault();
+    const p   = kbHoverRowPitch;
+    const dir = e.code==='ArrowUp' ? 1 : -1;
+    pitchOffsets[p] = Math.max(-MAX_CENTS, Math.min(MAX_CENTS, pitchOffsets[p] + dir));
+    syncCPitches(p);
+    recomputeRows(); drawKeyboard(); drawGrid();
+    // 短く発音してフィードバック
+    playTone(pitchToHz(p, pitchOffsets[p]), 0.25);
+    const ci=pitchOffsets[p], sign=ci>0?'+':'';
+    updateStatus(`${NOTE_NAMES[p]}: ${ci===0?'±0':(sign+ci)}¢  (${pitchToHz(p,pitchOffsets[p]).toFixed(2)} Hz)  ← 矢印キーで±1¢調整中`);
+  }
 });
 
 function updateStatus(msg){document.getElementById('status-msg').textContent=msg;}
