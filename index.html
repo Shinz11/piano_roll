@@ -50,6 +50,22 @@ body {
   border-color: #0077e6;     /* 枠線も少し濃い青に */
   font-weight: bold;
 }
+
+/* ループボタンの通常状態（OFF） */
+#btn-loop {
+  background-color: #2a2a4a;
+  color: #8b949e;
+  border: 1px solid #4a4a6a;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* ループがON（activeクラスが付与された）時の状態 */
+#btn-loop.active {
+  background-color: #f0a040; /* Logic風の黄色 */
+  color: #000000;
+  border-color: #d08020;
+}
+
 #btn-record {
   background:#6b3a00; color:#fff; border:1px solid #e08000; border-radius:6px;
   font-family:inherit; font-size:14px; font-weight:bold;
@@ -186,7 +202,7 @@ body {
 <div id="transport">
   <button class="t-btn" id="btn-play">▶ 再生</button>
   <button class="t-btn" id="btn-stop" disabled>■ 停止</button>
-  <button class="t-btn" id="btn-loop" style="background:#2a2a4a; color:#8b949e; border:1px solid #4a4a6a;">🔁 ループ</button>
+  <button class="t-btn active" id="btn-loop">🔁 ループ</button>
   <button id="btn-record">⏺ 録音</button>
   <button class="t-btn" id="btn-metronome">⏱️メトロノーム</button>
   <div class="vsep"></div>
@@ -272,22 +288,16 @@ const C = {
 // ループ（リピート）状態
 // ============================================================
 let loopEnabled   = true;
+
+
 let loopStartBeat = 0;
 let loopEndBeat   = 8; // 初期値は最初の8拍（2小節）
 
 // ループボタンの切り替え処理（スクリプトの下の方、イベントリスナー群に追加）
+// ループボタンの切り替え処理
 document.getElementById('btn-loop').addEventListener('click', (e) => {
   loopEnabled = !loopEnabled;
-  const btn = e.target;
-  if (loopEnabled) {
-    btn.style.background = '#f0a040'; // Logic風の黄色
-    btn.style.color = '#000';
-    btn.style.borderColor = '#d08020';
-  } else {
-    btn.style.background = '#2a2a4a';
-    btn.style.color = '#8b949e';
-    btn.style.borderColor = '#4a4a6a';
-  }
+  e.target.classList.toggle('active', loopEnabled); // activeクラスを付け外しするだけ！
   drawRuler();
 });
 
@@ -708,13 +718,18 @@ function seqTick() {
   
   const win = (1 / SUBDIVISIONS) * 0.6;
   for (const n of notes) {
+    // ▼ ここを追加: ループ中は、ループ範囲外（または境界線上）にあるノートをブロックする ▼
+    if (isLooping && (n.start < loopStartBeat || n.start >= loopEndBeat)) {
+      continue; 
+    }
+
     if (!playedIds.has(n.id) && Math.abs(n.start - playheadBeat) < win) {
       playedIds.add(n.id);
       playTone(pitchToHz(n.pitch, pitchOffsets[n.pitch]), (n.duration / bps) * 0.92, n.velocity);
     }
   }
   drawGrid();
-  drawKeyboard(); // ★ここを追加：再生中も鍵盤を描画更新する
+  drawKeyboard(); 
   if (isPlaying) rafId = requestAnimationFrame(seqTick);
 }
 
