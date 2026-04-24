@@ -35,6 +35,18 @@ body {
 #btn-stop  { background:#6b1e1e; color:#fff; border:1px solid #b82e2e; }
 #btn-stop:hover  { background:#7a2525; }
 #btn-stop:disabled { background:#3a1a1a; color:#886655; }
+/* メトロノームボタンの通常状態（フワッと色が変わるアニメーション設定） */
+#btn-metronome {
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* メトロノームがON（activeクラスが付与された）時の状態 */
+#btn-metronome.active {
+  background-color: #3399ff; /* 鮮やかブルー */
+  color: #ffffff;            /* 文字は白にして見やすく */
+  border-color: #0077e6;     /* 枠線も少し濃い青に */
+  font-weight: bold;
+}
 #btn-record {
   background:#6b3a00; color:#fff; border:1px solid #e08000; border-radius:6px;
   font-family:inherit; font-size:14px; font-weight:bold;
@@ -81,6 +93,7 @@ body {
 .modal-ok:hover { background:#257a45; }
 .modal-ok:disabled { opacity:0.5; cursor:default; }
 .hidden { display:none !important; }
+
 </style>
 </head>
 <body>
@@ -170,7 +183,9 @@ body {
 <div id="transport">
   <button class="t-btn" id="btn-play">▶ 再生</button>
   <button class="t-btn" id="btn-stop" disabled>■ 停止</button>
+  <button class="t-btn" id="btn-loop" style="background:#2a2a4a; color:#8b949e; border:1px solid #4a4a6a;">🔁 ループ</button>
   <button id="btn-record">⏺ 録音</button>
+  <button class="t-btn" id="btn-metronome">⏱️メトロノーム</button>
   <div class="vsep"></div>
   <span class="t-lbl">BPM</span>
   <span style="color:#e0e0e0;font-size:15px;font-weight:bold;padding:0 4px;">90</span>
@@ -180,6 +195,8 @@ body {
     <option value="1" selected>4分音符</option>
   </select>
   <div class="vsep"></div>
+
+  <button class="t-btn" id="btn-clear" style="background:#5c1a1a; color:#ffaaaa; border:1px solid #b82e2e; margin-right:10px;">🗑️ クリア</button>
   <button id="btn-submit">💾 データ保存</button>
   <button id="btn-play12"
     style="display:none;background:#1a3a5c;color:#00e5ff;border:1px solid #00e5ff;border-radius:6px;
@@ -223,7 +240,7 @@ const NOTE_NAMES   = ["1","2","3","4","5","6","7","1'"];
 const EDO7_STEP_CENTS = 1200 / 7;           // ≈ 171.4286¢
 const EDO7_SEMITONES  = Array.from({length: 8}, (_, i) => i * EDO7_STEP_CENTS / 100);
 const BASE_HZ      = 261.62;
-const MAX_CENTS    = 200.0;
+const MAX_CENTS    = EDO7_STEP_CENTS;
 
 // Cのピッチインデックス（下=0, 上=7）
 const C_LOW  = 0;
@@ -247,6 +264,55 @@ const C = {
   keyC:"#f0f0f0", keyCText:"#df2828", keyWhite:"#f0f0f0", keyBorder:"#555",
   tunePos:"#00e5ff", tuneNeg:"#ff6e9c",
 };
+
+// ============================================================
+// ループ（リピート）状態
+// ============================================================
+let loopEnabled   = true;
+let loopStartBeat = 0;
+let loopEndBeat   = 8; // 初期値は最初の8拍（2小節）
+
+// ループボタンの切り替え処理（スクリプトの下の方、イベントリスナー群に追加）
+document.getElementById('btn-loop').addEventListener('click', (e) => {
+  loopEnabled = !loopEnabled;
+  const btn = e.target;
+  if (loopEnabled) {
+    btn.style.background = '#f0a040'; // Logic風の黄色
+    btn.style.color = '#000';
+    btn.style.borderColor = '#d08020';
+  } else {
+    btn.style.background = '#2a2a4a';
+    btn.style.color = '#8b949e';
+    btn.style.borderColor = '#4a4a6a';
+  }
+  drawRuler();
+});
+
+// ============================================================
+// メトロノーム
+// ============================================================
+let metronomeEnabled = false; // メトロノームのON/OFF状態
+let lastClickBeat = -1;       // 最後にクリックを鳴らした拍を記録
+
+// メトロノームの音（「カッ」という短い音）を生成
+function playClick(isDownbeat) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  // 1拍目は少し高く（1000Hz）、それ以外は低め（800Hz）にしてアクセントをつける
+  osc.frequency.value = isDownbeat ? 1000 : 800;
+  
+  // 非常に短い減衰音を作る（クリック感）
+  gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.05);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination); 
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.05);
+}
 
 // ============================================================
 // 状態
@@ -276,69 +342,45 @@ function syncCPitches(changedPitch) {
 }
 
 function recomputeRows() {
-  // -------------------------------------------------------
-  // 設計:
-  //   cents > 0（音を上げた）→ 行が上方向に「伸びる」（高さ増）
-  //                            上の隣行がその分「縮む」
-  //   cents < 0（音を下げた）→ 行が下方向に「縮む」（高さ減）
-  //                            下の隣行がその分「縮む」
-  //
-  // 行インデックス i : 上から順（i=0 が最高音 pitch=7）
-  // ピッチ p = TOTAL_NOTES - 1 - i
-  // -------------------------------------------------------
-  const nh  = getNH();
-  const MAX_DELTA = nh * 0.45;   // 最大伸縮量（行高さの45%）
+  const nh = getNH();
+  // 隣の鍵盤（1ステップ）までのセント数 (7平均律の場合は約171.4¢)
+  const stepCents = EDO7_STEP_CENTS; 
 
-  // step1: 各行の「自然高さ」と「伸縮デルタ」を計算
-  const delta = new Array(TOTAL_NOTES).fill(0); // 正=伸びる, 負=縮む
+  // 1. 各行の「仮想的な中心Y座標」を計算
+  const centerY = new Array(TOTAL_NOTES);
   for (let i = 0; i < TOTAL_NOTES; i++) {
     const p = TOTAL_NOTES - 1 - i;
-    const c = pitchOffsets[p];
-    delta[i] = (c / MAX_CENTS) * MAX_DELTA;  // cents>0 → 正（伸びる）
+    // 基本の中心位置から、チューニングの割合に応じてY座標を上下にずらす
+    // （セントがプラス＝音が高い＝画面の上方向へ移動）
+    centerY[i] = (i + 0.5) * nh - (pitchOffsets[p] / stepCents) * nh;
   }
 
-  // step2: 行高さを計算
-  //   自分のdelta分だけ自分の高さが変化
-  //   その影響を上/下の隣行に転嫁
-  const h = new Array(TOTAL_NOTES).fill(nh);
-  const borrow = new Array(TOTAL_NOTES).fill(0); // 隣から借りる/貸す量
+  // 2. 境界線（各行のTopとBottom）を、隣り合う中心座標の中点として計算
+  const B = new Array(TOTAL_NOTES + 1);
+  B[0] = 0; // 一番上の線は固定
+  for (let i = 1; i < TOTAL_NOTES; i++) {
+    B[i] = (centerY[i - 1] + centerY[i]) / 2;
+  }
+  B[TOTAL_NOTES] = TOTAL_NOTES * nh; // 一番下の線は固定
+
+  // 3. 境界線の逆転（鍵盤の高さがマイナスになる）を防ぐ安全装置
+  const MIN_H = 6;
+  for (let i = 1; i < TOTAL_NOTES; i++) {
+    if (B[i] < B[i - 1] + MIN_H) B[i] = B[i - 1] + MIN_H;
+  }
+  for (let i = TOTAL_NOTES - 1; i >= 1; i--) {
+    if (B[i] > B[i + 1] - MIN_H) B[i] = B[i + 1] - MIN_H;
+  }
+
+  // 4. 最終的な rowTops と rowHeights を確定
   for (let i = 0; i < TOTAL_NOTES; i++) {
-    const d = delta[i];
-    if (d > 0) {
-      // 音を上げた → 上方向に伸びる → 上の隣行(i-1)から借りる
-      h[i] += d;
-      if (i - 1 >= 0) h[i-1] -= d;
-    } else if (d < 0) {
-      // 音を下げた → 下方向に縮む → 下の隣行(i+1)へ押し出す（その行も縮む）
-      h[i] += d; // h[i]が減る（d<0なのでマイナス）
-      // 下の隣行は押し出しで縮むのではなく位置がずれるだけ（高さはそのまま）
-    }
+    rowTops[i] = B[i];
+    rowHeights[i] = B[i + 1] - B[i];
   }
-
-  // step3: 最小高さを保証し、合計を totalHeight に合わせる
-  for (let i = 0; i < TOTAL_NOTES; i++) h[i] = Math.max(6, h[i]);
-  const total = nh * TOTAL_NOTES;
-  const sum   = h.reduce((a, b) => a + b, 0);
-  // 最も高い行に差分を加減して合計を合わせる
-  let bi = 0;
-  for (let i = 1; i < TOTAL_NOTES; i++) if (h[i] > h[bi]) bi = i;
-  h[bi] += total - sum;
-  h[bi] = Math.max(6, h[bi]);
-
-  // step4: rowHeights / rowTops を確定
-  let acc = 0;
-  for (let i = 0; i < TOTAL_NOTES; i++) {
-    rowHeights[i] = Math.round(h[i]);
-    rowTops[i]    = acc;
-    acc          += rowHeights[i];
-  }
-  // 端数を最後の行で吸収
-  const finalSum = rowTops[TOTAL_NOTES-1] + rowHeights[TOTAL_NOTES-1];
-  rowHeights[TOTAL_NOTES-1] += total - finalSum;
 }
 
 function totalHeight() { return getNH() * TOTAL_NOTES; }
-function getCentsPx()  { return MAX_CENTS / (getNH() * 0.5); }
+function getCentsPx()  { return(2*EDO7_STEP_CENTS)/ getNH() ; }
 
 function yToRow(y) {
   for (let i = 0; i < TOTAL_NOTES; i++)
@@ -351,11 +393,21 @@ function pitchToHz(pitch, cents=0) {
   return BASE_HZ * Math.pow(2, (EDO7_SEMITONES[pitch] + cents / 100) / 12);
 }
 
-function centsToFill(cents, alpha=220) {
-  const t = Math.min(1, Math.abs(cents) / MAX_CENTS);
-  if (Math.abs(cents) < 1) return `rgba(233,69,96,${alpha/255})`;
-  if (cents > 0) return `rgba(255,${Math.round(120+t*80)},${Math.round(20+t*20)},${alpha/255})`;
-  return `rgba(${Math.round(180-t*50)},${Math.round(60+t*20)},${Math.round(200+t*55)},${alpha/255})`;
+function centsToFill(cents, lightnessOffset = 0) {
+  const t = Math.min(1, Math.abs(cents) / EDO7_STEP_CENTS);
+  
+  // ±0の時（デフォルト）
+  if (Math.abs(cents) < 1) return `hsl(345, 80%, ${60 + lightnessOffset}%)`;
+
+  if (cents > 0) {
+    // プラス方向： 水色(190) → 黄色(50)
+    const hue = 190 - (t * 140);
+    return `hsl(${Math.round(hue)}, 90%, ${60 + lightnessOffset}%)`;
+  } else {
+    // マイナス方向： 紫(280) → 青(220)
+    const hue = 280 - (t * 60);
+    return `hsl(${Math.round(hue)}, 80%, ${65 + lightnessOffset}%)`;
+  }
 }
 
 function noteRect(note) {
@@ -376,7 +428,7 @@ function ensureAudio() {
   if (!audioCtx) {
     audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = 1.0;
+    masterGain.gain.value = 0.9;
     masterGain.connect(audioCtx.destination);
   }
   if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -438,6 +490,12 @@ let recSampleRate   = 44100;
 
 function startRecording() {
   ensureAudio();
+
+  //録音開始時にループがONならOFFにする
+  if(loopEnabled){
+    document.getElementById('btn-loop').click();
+  }
+
   recSamples    = [];
   recSampleRate = audioCtx.sampleRate;
 
@@ -457,6 +515,10 @@ function startRecording() {
   btn.textContent = '⏹ 録音停止';
   btn.classList.add('recording');
   updateStatus('🔴 録音中… 停止するには「録音停止」ボタンを押してください');
+
+  stopPlay();
+  playheadBeat=0;
+  startPlay();
 }
 
 function stopRecording() {
@@ -474,6 +536,8 @@ function stopRecording() {
   btn.textContent = '⏺ 録音';
   btn.classList.remove('recording');
 
+  stopPlay();
+
   // サンプルが空なら終了
   if (recSamples.length === 0) { updateStatus('録音データがありません'); return; }
 
@@ -481,7 +545,26 @@ function stopRecording() {
   const totalLen = recSamples.reduce((s, b) => s + b.length, 0);
   const pcm      = new Float32Array(totalLen);
   let offset = 0;
-  for (const buf of recSamples) { pcm.set(buf, offset); offset += buf.length; }
+  let maxPeak = 0; // 最大音量を記録する変数
+
+  // 配列の結合と最大ピーク（一番大きい音）の検出
+  for (const buf of recSamples) {
+    pcm.set(buf, offset);
+    offset += buf.length;
+    for(let i = 0; i < buf.length; i++) {
+      const abs = Math.abs(buf[i]);
+      if(abs > maxPeak) maxPeak = abs;
+    }
+  }
+
+  // ★追加: 【音割れ防止ノーマライズ】
+  // 最大値が0.95（限界の少し手前）を超える場合、全体を縮小して音割れを防ぐ
+  if (maxPeak > 0.95) {
+    const scale = 0.95 / maxPeak; 
+    for (let i = 0; i < pcm.length; i++) {
+      pcm[i] *= scale;
+    }
+  }
 
   const ts = Date.now();
   downloadWAV(encodeWAV(pcm, recSampleRate), `pianoroll_7edo_${ts}.wav`);
@@ -558,6 +641,7 @@ function startPlay() {
   rafId = requestAnimationFrame(seqTick);
 }
 function stopPlay() {
+  lastClickBeat= -1;
   isPlaying = false;
   if (rafId) cancelAnimationFrame(rafId);
   playheadBeat = 0;
@@ -568,10 +652,57 @@ function stopPlay() {
 function seqTick() {
   const bpm = getBpm(), bps = bpm / 60;
   playheadBeat = playStartBeat + (audioCtx.currentTime - playStartTime) * bps;
-  if (playheadBeat >= TOTAL_BEATS) {
-    playheadBeat = 0; playedIds.clear();
-    playStartTime = audioCtx.currentTime; playStartBeat = 0;
+  
+  //メトロノームの判定
+  if (metronomeEnabled) {
+    const currentBeatIndex = Math.floor(playheadBeat);
+    // 新しい拍に入った瞬間にだけ音を鳴らす
+    if (currentBeatIndex !== lastClickBeat) {
+      // 4拍子を想定（拍数を4で割った余りが0なら強拍）
+      playClick(currentBeatIndex % 4 === 0);
+      lastClickBeat = currentBeatIndex;
+    }
   }
+
+  //録音中の自動停止判定
+  if (isRecording) {
+    // 最後に配置されたノートの「終了拍」を計算（ノートが1つもなければ0）
+    const lastNoteEnd = notes.length > 0 
+      ? notes.reduce((max, n) => Math.max(max, n.start + n.duration), 0) 
+      : 0;
+    
+    // 音の余韻（リリース）が不自然にプツッと切れないよう、0.5拍（8分音符分）の余裕を持たせる
+    // ※ただし、グリッドの最大値（TOTAL_BEATS = 16）は超えないように Math.min でガードする
+    const autoStopBeat = Math.min(lastNoteEnd + 0.5, TOTAL_BEATS);
+
+    if (playheadBeat >= autoStopBeat) {
+      document.getElementById('btn-record').click(); // 録音停止を擬似クリック
+      return; // 停止したらこれ以上進まないように関数を抜ける
+    }
+  }
+
+  // 現在の終了地点を決定（ループONならloopEndBeat、OFFなら最後まで）
+  let isLooping = loopEnabled && (loopEndBeat > loopStartBeat);
+  let currentEnd = isLooping ? loopEndBeat : TOTAL_BEATS;
+
+  // 終了地点に到達した時の処理
+  if (playheadBeat >= currentEnd) {
+    if (isLooping) {
+      lastClickBeat= -1;
+      // 音楽的なズレをなくすため、超過分(overshoot)を計算して頭に戻す
+      const overshoot = playheadBeat - currentEnd;
+      playheadBeat = loopStartBeat + overshoot;
+      playStartBeat = loopStartBeat;
+      playStartTime = audioCtx.currentTime - (overshoot / bps);
+    } else {
+      // ループOFFの場合は0に戻る（または停止させるのもあり）
+      playheadBeat = 0;
+      playStartBeat = 0;
+      playStartTime = audioCtx.currentTime;
+    }
+    playedIds.clear(); // 鳴らした音の履歴をリセット
+  }
+  
   const win = (1 / SUBDIVISIONS) * 0.6;
   for (const n of notes) {
     if (!playedIds.has(n.id) && Math.abs(n.start - playheadBeat) < win) {
@@ -580,6 +711,7 @@ function seqTick() {
     }
   }
   drawGrid();
+  drawKeyboard(); // ★ここを追加：再生中も鍵盤を描画更新する
   if (isPlaying) rafId = requestAnimationFrame(seqTick);
 }
 
@@ -598,7 +730,8 @@ const rulerCtx   = rulerCanvas.getContext('2d');
 // ============================================================
 function resizeCanvases() {
   const areaH = document.getElementById('piano-roll-area').clientHeight;
-  const areaW = document.getElementById('grid-wrap').clientWidth;
+  const gridWrap=document.getElementById('grid-wrap');
+  const areaW = Math.ceil(gridWrap.getBoundingClientRect().width);
   const rowH  = Math.floor((areaH - RULER_H) / TOTAL_NOTES);
   const mainH = rowH * TOTAL_NOTES;
   window._nh  = rowH;
@@ -612,14 +745,17 @@ function resizeCanvases() {
   corner.style.width  = KB_W + 'px';
   corner.style.height = RULER_H + 'px';
 
-  rulerCanvas.width  = GRID_W; rulerCanvas.height = RULER_H;
+  rulerCanvas.width  = GRID_W; 
+  rulerCanvas.height = RULER_H;
 
-  kbCanvas.width  = KB_W; kbCanvas.height = mainH;
+  kbCanvas.width  = KB_W; 
+  kbCanvas.height = mainH;
   document.getElementById('keyboard-wrap').style.cssText =
     `width:${KB_W}px;height:${mainH}px;`;
 
-  gridCanvas.width  = GRID_W; gridCanvas.height = mainH;
-  document.getElementById('grid-wrap').style.height = mainH + 'px';
+  gridCanvas.width  = GRID_W; 
+  gridCanvas.height = mainH;
+  gridWrap.style.height = mainH + 'px';
 
   drawAll();
 }
@@ -631,6 +767,21 @@ function drawRuler() {
   const ctx = rulerCtx;
   ctx.clearRect(0, 0, GRID_W, RULER_H);
   ctx.fillStyle = C.bgLight; ctx.fillRect(0, 0, GRID_W, RULER_H);
+  
+  // --- ループ範囲の描画（追加部分） ---
+  if (loopEnabled) {
+    const x = loopStartBeat * BEAT_W;
+    const w = (loopEndBeat - loopStartBeat) * BEAT_W;
+    // 背景のハイライト
+    ctx.fillStyle = 'rgba(240, 160, 64, 0.15)'; 
+    ctx.fillRect(x, 0, w, RULER_H);
+    // 上部の黄色い太線
+    ctx.fillStyle = '#f0a040';
+    ctx.fillRect(x, 0, w, 4);
+  }
+  // ------------------------------------
+
+  // 既存の線と数字の描画
   for (let b = 0; b <= TOTAL_BEATS; b++) {
     const x = b * BEAT_W;
     if (b % 4 === 0) {
@@ -653,6 +804,19 @@ function drawRuler() {
 function drawKeyboard() {
   const ctx = kbCtx;
   ctx.clearRect(0, 0, KB_W, kbCanvas.height);
+
+  // ▼ 追加：現在再生中のピッチ（音の高さ）をリストアップ ▼
+  const activePitches = new Set();
+  if (isPlaying) {
+    for (const n of notes) {
+      // プレイヘッドが、このノートの「開始位置」から「終了位置」の間にあるか判定
+      if (playheadBeat >= n.start && playheadBeat < n.start + n.duration) {
+        activePitches.add(n.pitch);
+      }
+    }
+  }
+  // ▲ 追加ここまで ▲
+
   for (let i = 0; i < TOTAL_NOTES; i++) {
     const p     = TOTAL_NOTES - 1 - i;
     const name  = NOTE_NAMES[p];
@@ -660,12 +824,17 @@ function drawKeyboard() {
     const rt    = rowTops[i], rh = rowHeights[i];
     const cents = pitchOffsets[p];
 
-    ctx.fillStyle = isC ? C.keyC : C.keyWhite;
+    // ▼ 修正：再生中のピッチならハイライト色（明るい水色）にする ▼
+    if (activePitches.has(p)) {
+      ctx.fillStyle = '#b3e5fc'; // 光る色（シアン系の明るい色）
+    } else {
+      ctx.fillStyle = isC ? C.keyC : C.keyWhite; // 通常の色
+    }
+    // ▲ 修正ここまで ▲
+
     ctx.fillRect(0, rt, KB_W-2, rh);
 
     if (Math.abs(cents) > 0.5) {
-      // cents>0（上げた）→ 行が上に伸びているので上端寄りにバー
-      // cents<0（下げた）→ 行が下に縮んでいるので下端寄りにバー
       const bh = Math.max(2, (Math.abs(cents)/MAX_CENTS) * rh * 0.4);
       ctx.fillStyle = cents > 0 ? C.tunePos : C.tuneNeg;
       ctx.globalAlpha = 0.9;
@@ -674,10 +843,8 @@ function drawKeyboard() {
     }
 
     const isHot = (p === kbHoverBorderPitch || (kbIsTuning && p === kbTunePitch));
-    // 上の線（常時）
     ctx.strokeStyle = C.keyBorder; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0,rt); ctx.lineTo(KB_W-2,rt); ctx.stroke();
-    // 下の線（ホット時は強調）
     ctx.strokeStyle = isHot ? (cents>=0 ? C.tunePos : C.tuneNeg) : C.keyBorder;
     ctx.lineWidth   = isHot ? 2 : 1;
     ctx.beginPath(); ctx.moveTo(0,rt+rh-1); ctx.lineTo(KB_W-2,rt+rh-1); ctx.stroke();
@@ -733,7 +900,9 @@ function drawGrid() {
   ctx.beginPath(); ctx.moveTo(0,totalHeight()); ctx.lineTo(GRID_W,totalHeight()); ctx.stroke();
 
   for (const n of notes) drawNote(ctx,n,false);
-  if (dragState.mode==='placing'&&dragState.ghost) drawNote(ctx,dragState.ghost,true);
+  if ((dragState.mode==='placing' || dragState.mode==='moving') && dragState.ghost) {
+    drawNote(ctx, dragState.ghost, true);
+  }
 
   if (isPlaying) {
     ctx.strokeStyle='#fff'; ctx.lineWidth=2;
@@ -743,23 +912,95 @@ function drawGrid() {
 
 function drawNote(ctx, note, ghost) {
   const r = noteRect(note), cents = pitchOffsets[note.pitch];
+  
+  const grad = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+
   if (ghost) {
-    ctx.fillStyle='rgba(100,200,255,0.55)'; ctx.strokeStyle='rgba(160,220,255,0.8)';
+    // マウスカーソルに追従する仮配置ノート（これは少し透けさせておきます）
+    grad.addColorStop(0, 'rgba(160,220,255,0.7)');
+    grad.addColorStop(1, 'rgba(100,200,255,0.3)');
+    ctx.strokeStyle = 'rgba(160,220,255,0.8)';
   } else {
-    ctx.fillStyle   = centsToFill(cents,220);
-    ctx.strokeStyle = cents>0?'rgba(255,210,80,0.85)':cents<0?'rgba(190,140,255,0.85)':'rgba(255,130,150,0.8)';
+    // 確定したノート：透明度を使わず、明るさ（L）の増減で立体感を作る
+    grad.addColorStop(0, centsToFill(cents, 8));   // 上部は少し明るく (+8%)
+    grad.addColorStop(1, centsToFill(cents, -12)); // 下部は少し暗く (-12%)
+    
+    // 枠線も不透明に。本体の下部よりもさらに暗くして引き締める
+    ctx.strokeStyle = Math.abs(cents) < 1 
+      ? '#ff5e7a' 
+      : centsToFill(cents, -20); 
   }
-  ctx.lineWidth=1; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.strokeRect(r.x,r.y,r.w,r.h);
-  if (r.w>22&&r.h>8) {
-    const nm=NOTE_NAMES[note.pitch], ci=Math.round(cents), sign=ci>0?'+':'';
-    const lbl=Math.abs(ci)>0.5?`${nm}${sign}${ci}¢`:nm;
-    const fs=Math.max(8,Math.min(13,Math.floor(r.h/3)));
-    ctx.fillStyle='#fff'; ctx.font=`bold ${fs}px Courier New`;
-    ctx.textAlign='center'; ctx.fillText(lbl,r.x+r.w/2,r.y+r.h/2+fs*0.35,r.w-4); ctx.textAlign='left';
+  
+  ctx.fillStyle = grad;
+  ctx.lineWidth = 1; 
+  ctx.fillRect(r.x, r.y, r.w, r.h); 
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  
+  // テキストの描画
+  if (r.w > 22 && r.h > 8) {
+    const nm = NOTE_NAMES[note.pitch], ci = Math.round(cents), sign = ci > 0 ? '+' : '';
+    const lbl = Math.abs(ci) > 0.5 ? `${nm}${sign}${ci}¢` : nm;
+    const fs = Math.max(8, Math.min(13, Math.floor(r.h / 3)));
+    
+    ctx.fillStyle = '#fff'; 
+    ctx.font = `bold ${fs}px Courier New`;
+    ctx.textAlign = 'center'; 
+    ctx.fillText(lbl, r.x + r.w / 2, r.y + r.h / 2 + fs * 0.35, r.w - 4); 
+    ctx.textAlign = 'left';
   }
 }
 
 function drawAll() { recomputeRows(); drawRuler(); drawKeyboard(); drawGrid(); }
+
+
+// ============================================================
+// ルーラー（ループ範囲）マウス操作
+// ============================================================
+let rulerDrag = { active: false, start: 0 };
+
+rulerCanvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  // クリックした拍を計算（整数に丸める）
+  const beat = Math.floor(e.offsetX / BEAT_W);
+  rulerDrag.active = true;
+  rulerDrag.start  = beat;
+  loopStartBeat    = beat;
+  loopEndBeat      = beat + 1; // 最低1拍
+  
+  // ドラッグ開始と同時にループを強制ONにする（Logicと同じ挙動）
+  if (!loopEnabled) document.getElementById('btn-loop').click();
+  drawRuler();
+});
+
+rulerCanvas.addEventListener('mousemove', e => {
+  if (!rulerDrag.active) return;
+  // ドラッグ中の現在の拍を計算
+  let currentBeat = Math.round(e.offsetX / BEAT_W);
+  
+  // 開始位置と現在位置でStartとEndを決定
+  if (currentBeat > rulerDrag.start) {
+    loopStartBeat = rulerDrag.start;
+    loopEndBeat   = currentBeat;
+  } else if (currentBeat < rulerDrag.start) {
+    loopStartBeat = currentBeat;
+    loopEndBeat   = rulerDrag.start;
+  }
+  if (loopStartBeat === loopEndBeat) loopEndBeat = loopStartBeat + 1; // 潰れないように
+  
+  drawRuler();
+});
+
+rulerCanvas.addEventListener('mouseup', () => rulerDrag.active = false);
+rulerCanvas.addEventListener('mouseleave', () => rulerDrag.active = false);
+
+rulerCanvas.addEventListener('contextmenu', e => {
+  e.preventDefault(); // ブラウザ標準の右クリックメニューを無効化
+  
+  // ループがONの場合のみ、OFFに切り替える（ボタンのクリックイベントを呼び出す）
+  if (loopEnabled) {
+    document.getElementById('btn-loop').click();
+  }
+});
 
 // ============================================================
 // 鍵盤マウス操作
@@ -779,6 +1020,22 @@ function borderPitchAt(y) {
   return -1;
 }
 
+// 指定したピッチ(p)が「現在動けるセント値の範囲」を動的に計算する
+function getDynamicLimits(p) {
+  const S = EDO7_STEP_CENTS;
+  
+  // 上隣と下隣のピッチインデックスを取得（Cの音はオクターブを跨いで判定）
+  const upperP = (p === 7) ? 1 : p + 1;
+  const lowerP = (p === 0) ? 6 : p - 1;
+  
+  // 隣の音が今どれだけズレているか(pitchOffsets)を考慮して限界を計算
+  // ±1 は「完全に重ならないための1セントの壁（余裕）」です
+  return {
+    min: -S + pitchOffsets[lowerP] + 1,
+    max:  S + pitchOffsets[upperP] - 1
+  };
+}
+
 kbCanvas.addEventListener('mousemove', e => {
   const y=e.offsetY;
   // ホバー中の行ピッチを常時追跡（矢印キー操作のため）
@@ -786,7 +1043,14 @@ kbCanvas.addEventListener('mousemove', e => {
   kbHoverRowPitch = hrow >= 0 ? TOTAL_NOTES - 1 - hrow : -1;
 
   if (kbIsTuning&&kbTunePitch>=0) {
-    const nc=Math.max(-MAX_CENTS,Math.min(MAX_CENTS,kbTuneStartCents+(kbTuneStartY-y)*getCentsPx()));
+    // 自分専用の「現在の限界値」を取得
+    const limits = getDynamicLimits(kbTunePitch);
+    // マウスの移動量から計算したセント値
+    const rawCents = kbTuneStartCents + (kbTuneStartY - y) * getCentsPx();
+    
+    // 上限・下限の範囲内に収める
+    const nc = Math.max(limits.min, Math.min(limits.max, rawCents));
+    
     pitchOffsets[kbTunePitch]=Math.round(nc);
     // C連動
     syncCPitches(kbTunePitch);
@@ -810,7 +1074,7 @@ kbCanvas.addEventListener('mousedown', e => {
     if (row>=0) {
       const p=TOTAL_NOTES-1-row, cents=pitchOffsets[p];
       playTone(pitchToHz(p,cents),0.5);
-      updateStatus(`発音: ${NOTE_NAMES[p]}  ${cents?(cents>0?'+':'')+Math.round(cents)+'¢':''}  (${pitchToHz(p,cents).toFixed(2)} Hz)`);
+      updateStatus(`発音: ${NOTE_NAMES[p]}  ${cents?(cents>0?'+':'')+Math.round(cents)+'¢':''}`);
     }
   }
 });
@@ -834,11 +1098,12 @@ kbCanvas.addEventListener('dblclick', e => {
 });
 
 // ============================================================
-// グリッドマウス操作
+// グリッドマウス操作（ドラッグ移動対応版）
 // ============================================================
-const dragState={mode:null,ghost:null,startX:0,resizeNote:null,resizeStartDur:0,resizeStartX:0};
+// originalNote を追加して移動前の状態を保存できるようにする
+const dragState={mode:null, ghost:null, startX:0, resizeNote:null, resizeStartDur:0, resizeStartX:0, originalNote:null};
 
-function snapBeat(b) { return Math.round(b); } // 拍頭（整数）のみ
+function snapBeat(b) { return Math.floor(b); } // 拍頭（整数）のみ
 
 function noteAtPixel(px,py) {
   for (let i=notes.length-1;i>=0;i--) {
@@ -847,49 +1112,99 @@ function noteAtPixel(px,py) {
   }
   return null;
 }
-function resizeNoteAt(px,py) {
-  for (let i=notes.length-1;i>=0;i--) {
-    const r=noteRect(notes[i]);
-    if (py>=r.y&&py<=r.y+r.h&&px>=r.x+r.w-RESIZE_HOT&&px<=r.x+r.w+2) return notes[i];
-  }
-  return null;
-}
 
 gridCanvas.addEventListener('mousemove', e => {
   e.preventDefault(); const px=e.offsetX,py=e.offsetY;
-  // resizeモード無効（4分音符固定のため）
-  if (dragState.mode==='placing'&&dragState.ghost) {
+  
+  if (dragState.mode==='placing' && dragState.ghost) {
     drawGrid(); return;
   }
-  gridCanvas.style.cursor='crosshair';
+  
+  // ▼ 移動（ドラッグ）中の処理 ▼
+  if (dragState.mode==='moving' && dragState.ghost) {
+    const row = yToRow(py);
+    if (row >= 0) {
+      const newPitch = TOTAL_NOTES - 1 - row;
+      const newBeat  = Math.max(0, snapBeat(px / BEAT_W)); // マイナス（画面外）に行かないよう制限
+      dragState.ghost.pitch = newPitch;
+      dragState.ghost.start = newBeat;
+    }
+    gridCanvas.style.cursor = 'grabbing'; // 掴んでいる状態のカーソル
+    drawGrid();
+    return;
+  }
+  
+  // 何もしていない時は、ノートの上なら「手（grab）」、何もないところなら「十字（crosshair）」
+  gridCanvas.style.cursor = noteAtPixel(px,py) ? 'grab' : 'crosshair';
 });
+
 gridCanvas.addEventListener('mousedown', e => {
   e.preventDefault(); const px=e.offsetX,py=e.offsetY;
+  
+  // 右クリック：削除
   if (e.button===2) { const t=noteAtPixel(px,py); if(t){notes.splice(notes.indexOf(t),1);drawGrid();} return; }
   if (e.button!==0) return;
-  // resize無効（4分音符固定）
-  if (noteAtPixel(px,py)) return;
+
+  const clickedNote = noteAtPixel(px,py);
+  
+  // ▼ ノートをクリックした時（移動モード開始） ▼
+  if (clickedNote) {
+    dragState.mode = 'moving';
+    // 現在のノートを「移動前の姿」としてバックアップ
+    dragState.originalNote = { ...clickedNote }; 
+    // ドラッグ中の「仮の姿（ghost）」を生成
+    dragState.ghost = { ...clickedNote }; 
+    // 一旦配列から消して、キャンバス上から元のノートを隠す
+    notes.splice(notes.indexOf(clickedNote), 1); 
+    drawGrid();
+    return;
+  }
+
+  // ▼ 何もない場所をクリックした時（配置モード開始） ▼
   const row=yToRow(py); if(row<0)return;
   const pitch=TOTAL_NOTES-1-row, beat=snapBeat(px/BEAT_W), len=1; // 4分音符固定
   if (notes.find(n=>n.pitch===pitch&&n.start<=beat&&beat<n.start+n.duration)) return;
   dragState.mode='placing'; dragState.startX=px; dragState.ghost=newNote(pitch,beat,len); drawGrid();
 });
+
 gridCanvas.addEventListener('mouseup', e => {
   if (e.button!==0) return;
-  if (dragState.mode==='placing'&&dragState.ghost) {
+  
+  if (dragState.mode==='placing' && dragState.ghost) {
     const g=dragState.ghost;
     if (!notes.find(n=>n.pitch===g.pitch&&n.start<=g.start&&g.start<n.start+g.duration)) {
       notes.push(g); playTone(pitchToHz(g.pitch,pitchOffsets[g.pitch]),0.3);
     }
+  } 
+  // ▼ 移動を確定する時の処理 ▼
+  else if (dragState.mode==='moving' && dragState.ghost) {
+    const g = dragState.ghost;
+    // ドロップ先にすでに別のノートがないかチェック
+    const isOverlap = notes.find(n=>n.pitch===g.pitch&&n.start<=g.start&&g.start<n.start+g.duration);
+    
+    if (!isOverlap) {
+      notes.push(g); // 重なっていなければ新しい位置で確定
+      playTone(pitchToHz(g.pitch, pitchOffsets[g.pitch]), 0.3); // 配置確定時に音を鳴らす
+    } else {
+      notes.push(dragState.originalNote); // 重なっていたら元の位置に戻す
+    }
   }
-  dragState.mode=null; dragState.ghost=null; dragState.resizeNote=null; drawGrid();
+
+  dragState.mode=null; dragState.ghost=null; dragState.originalNote=null; drawGrid();
 });
+
 gridCanvas.addEventListener('mouseleave',()=>{
-  if (dragState.mode==='placing') {
-    if(dragState.ghost){notes.push(dragState.ghost);playTone(pitchToHz(dragState.ghost.pitch,pitchOffsets[dragState.ghost.pitch]),0.3);}
-    dragState.mode=null; dragState.ghost=null; drawGrid();
+  if (dragState.mode==='placing' && dragState.ghost) {
+    notes.push(dragState.ghost);
+    playTone(pitchToHz(dragState.ghost.pitch,pitchOffsets[dragState.ghost.pitch]),0.3);
+  } 
+  // ▼ ドラッグ中にキャンバス外に出たらキャンセルして元に戻す ▼
+  else if (dragState.mode==='moving' && dragState.originalNote) {
+    notes.push(dragState.originalNote);
   }
+  dragState.mode=null; dragState.ghost=null; dragState.originalNote=null; drawGrid();
 });
+
 gridCanvas.addEventListener('contextmenu',e=>e.preventDefault());
 
 // ============================================================
@@ -897,16 +1212,86 @@ gridCanvas.addEventListener('contextmenu',e=>e.preventDefault());
 // ============================================================
 document.getElementById('btn-play').addEventListener('click',()=>{if(!isPlaying)startPlay();});
 document.getElementById('btn-stop').addEventListener('click',stopPlay);
+
+
+// ▼ 全消去ボタンの処理（チューニング保持・リセットの分岐版） ▼
+document.getElementById('btn-clear').addEventListener('click', function() {
+  // 【ステップ1】まず、ノートを消すかどうかの確認
+  const clearNotes = confirm('配置したノートをすべて消去しますか？\n（「キャンセル」を押すと操作を取り消します）');
+  
+  if (!clearNotes) {
+    this.blur();
+    return; // キャンセルした場合はここで終了
+  }
+
+  // 【ステップ2】次に、チューニングを初期化するかどうかの確認
+  const resetTuning = confirm('チューニング（各鍵盤のセント値）もすべて ±0 にリセットしますか？\n\n・「OK」➔ チューニングも完全にリセットする\n・「キャンセル」➔ 現在のチューニング設定を残す');
+
+  // ノートの消去処理（どちらを選んでも実行される）
+  notes = [];
+  playedIds.clear();
+
+  // チューニングの初期化処理
+  if (resetTuning) {
+    // pitchOffsets（チューニングの配列）をすべて0に戻す
+    for (let i = 0; i < pitchOffsets.length; i++) {
+      pitchOffsets[i] = 0;
+    }
+    updateStatus('ノートとチューニングをすべて初期化しました。');
+  } else {
+    updateStatus('ノートを消去しました（チューニングは維持されています）。');
+  }
+
+  // 画面の再描画
+  drawGrid();
+  drawKeyboard(); // チューニングの見た目を更新するために鍵盤も再描画
+  
+  this.blur(); // フォーカスを外してスペースキーの誤爆を防ぐ
+});
+
+// ▼ ここから追加：メトロノームボタンをクリックした時の処理 ▼
+document.getElementById('btn-metronome').addEventListener('click', function() {
+  metronomeEnabled = !metronomeEnabled;
+  this.classList.toggle('active', metronomeEnabled);
+  updateStatus(`メトロノーム: ${metronomeEnabled ? 'ON' : 'OFF'}`);
+  
+  // 【重要】ボタンからフォーカスを外す（スペースキー再生の誤爆を防ぐため）
+  this.blur();
+});
+
+
 document.addEventListener('keydown',e=>{
   if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA')return;
   if(e.code==='Space'&&!e.repeat){e.preventDefault();isPlaying?stopPlay():startPlay();}
+  //Cキー：ループのON/OFF
+  if(e.code==='KeyC'&&!e.repeat){
+    e.preventDefault();
+    // ループボタンをクリックしたのと同じ処理（色変更と状態切り替え）を呼び出す
+    document.getElementById('btn-loop').click();
+  }
+
+  //Rキーで録音の開始/停止
+  if(e.code==='KeyR'&&!e.repeat){
+    e.preventDefault();
+    // 録音ボタンを裏側でクリックさせる
+    document.getElementById('btn-record').click();
+  }
+
+  // Kキー: メトロノームON/OFF
+  if(e.code==='KeyK'&&!e.repeat){
+    e.preventDefault();
+    document.getElementById('btn-metronome').click(); // ボタンをクリックさせるだけ
+  }
 
   // 矢印キー: 鍵盤ホバー中のピッチを±1セント調整
   if((e.code==='ArrowUp'||e.code==='ArrowDown')&&kbHoverRowPitch>=0){
     e.preventDefault();
     const p   = kbHoverRowPitch;
     const dir = e.code==='ArrowUp' ? 1 : -1;
-    pitchOffsets[p] = Math.max(-MAX_CENTS, Math.min(MAX_CENTS, pitchOffsets[p] + dir));
+    const limits = getDynamicLimits(p); // 限界値を取得
+    
+    // dir(±1)を加算しつつ、限界値でブロックする
+    pitchOffsets[p] = Math.round(Math.max(limits.min, Math.min(limits.max, pitchOffsets[p] + dir)));
     syncCPitches(p);
     recomputeRows(); drawKeyboard(); drawGrid();
     // 短く発音してフィードバック
